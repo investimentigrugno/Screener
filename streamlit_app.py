@@ -2,17 +2,8 @@ import streamlit as st
 import pandas as pd
 import time
 from datetime import datetime
-import traceback
-
-# Importazione con gestione errori
-try:
-    import tradingview_screener as tvs
-    from tradingview_screener import Query, Column
-    TV_AVAILABLE = True
-except ImportError as e:
-    st.error(f"❌ Errore importazione TradingView: {e}")
-    TV_AVAILABLE = False
-
+import tradingview_screener as tvs
+from tradingview_screener import Query, Column
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -53,180 +44,51 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def test_available_fields():
-    """Testa quali campi sono disponibili"""
+# Cache per i dati
+@st.cache_data(ttl=3600)  # Cache per 1 ora
+def get_screener_data(markets, min_mcap, max_mcap, rsi_min, rsi_max, volatility_min, eps_growth_min):
+    """Ottieni dati dal screener con parametri personalizzabili"""
     try:
-        st.info("🔍 Test campi disponibili...")
-        
-        # Lista dei campi più comuni che dovrebbero funzionare
-        basic_fields = ['close', 'description', 'market_cap_basic', 'volume', 'change']
-        
-        query = (
-            Query()
-            .set_markets('america')
-            .select(*basic_fields)
-            .where(Column('market_cap_basic') > 1_000_000_000)
-            .limit(3)
-            .get_scanner_data()
-        )
-        
-        if query and len(query) > 1:
-            df = query[1]
-            st.success(f"✅ Campi base OK! Trovati {len(df)} titoli")
-            st.write("**Campi disponibili:**", list(df.columns))
-            return True, df, basic_fields
-        else:
-            st.error("❌ Anche i campi base falliscono")
-            return False, pd.DataFrame(), []
-            
-    except Exception as e:
-        st.error(f"❌ Errore test campi: {str(e)}")
-        return False, pd.DataFrame(), []
-
-def get_screener_data_working(markets=['america'], limit=50):
-    """Query con campi che sappiamo funzionare"""
-    try:
-        st.info("🔄 Esecuzione query con campi verificati...")
-        
-        # Campi che dovrebbero essere disponibili
-        safe_fields = [
-            'close',           # Prezzo
-            'description',     # Nome
-            'market_cap_basic', # Market Cap
-            'volume',          # Volume
-            'change',          # Variazione %
-            'country',         # Paese
-            'sector',          # Settore
-            'currency',        # Valuta
-            'RSI',             # RSI
-            'SMA50',           # Media mobile 50
-            'SMA200'           # Media mobile 200
-        ]
-        
         query = (
             Query()
             .set_markets(*markets)
-            .select(*safe_fields)
+            .select('isin', 'description', 'country', 'sector', 'currency', 'close', 
+                   'Recommend.All', 'market_cap_basic', 'RSI', 'Volatility.D',
+                   'earning_per_share_diluted_yoy_growth_fy', 'SMA50', 'SMA200',
+                   'MACD.macd', 'MACD.signal', 'volume', 'change')
             .where(
-                Column('type') == 'stock',
-                Column('market_cap_basic') > 500_000_000,  # Market cap > 500M
-                Column('close') > 5,  # Prezzo > $5
-                Column('volume') > 100000,  # Volume minimo
-                Column('close') > Column('SMA50'),  # Prezzo > SMA50
-                Column('RSI') > 40,  # RSI > 40
-                Column('RSI') < 80   # RSI < 80
-            )
-            .order_by('market_cap_basic', ascending=False)
-            .limit(limit)
-            .get_scanner_data()
-        )
-        
-        df = query[1] if query and len(query) > 1 else pd.DataFrame()
-        
-        if not df.empty:
-            st.success(f"✅ Query completata! Trovati {len(df)} risultati")
-            # Mostra quali colonne sono effettivamente presenti
-            st.write("**Colonne nel dataset:**", list(df.columns))
-        else:
-            st.warning("⚠️ Query eseguita ma nessun risultato trovato")
-            
-        return df
-        
-    except Exception as e:
-        st.error(f"❌ Errore nella query: {str(e)}")
-        st.code(traceback.format_exc())
-        return pd.DataFrame()
-
-def get_advanced_screener_data(markets, min_mcap, max_mcap, rsi_min, rsi_max):
-    """Query avanzata con filtri personalizzabili"""
-    try:
-        st.info("🔄 Esecuzione query avanzata...")
-        
-        # Campi sicuri (testati)
-        fields = [
-            'close', 'description', 'market_cap_basic', 'volume', 'change',
-            'country', 'sector', 'currency', 'RSI', 'SMA50', 'SMA200'
-        ]
-        
-        query = (
-            Query()
-            .set_markets(*markets)
-            .select(*fields)
-            .where(
-                Column('type') == 'stock',
+                Column('type').isin(['stock']),
                 Column('market_cap_basic').between(min_mcap, max_mcap),
                 Column('close') > Column('SMA50'),
                 Column('close') > Column('SMA200'),
                 Column('RSI').between(rsi_min, rsi_max),
-                Column('volume') > 50000,
-                Column('close') > 1
+                Column('MACD.macd') > Column('MACD.signal'),
+                Column('Volatility.D') > volatility_min,
+                Column('earning_per_share_diluted_yoy_growth_fy') > eps_growth_min,
             )
             .order_by('market_cap_basic', ascending=False)
-            .limit(100)
+            .limit(200)
             .get_scanner_data()
         )
-        
-        df = query[1] if query and len(query) > 1 else pd.DataFrame()
-        
-        if not df.empty:
-            st.success(f"✅ Query avanzata completata! Trovati {len(df)} risultati")
-            
-            # Calcola un rating personalizzato basato sui dati disponibili
-            if 'RSI' in df.columns and 'change' in df.columns:
-                df['custom_score'] = calculate_custom_score(df)
-                df['rating_label'] = df['custom_score'].apply(format_custom_rating)
-        
-        return df
-        
+        return query[1]
     except Exception as e:
-        st.error(f"❌ Errore query avanzata: {str(e)}")
-        st.code(traceback.format_exc())
+        st.error(f"Errore nel recupero dati: {e}")
         return pd.DataFrame()
 
-def calculate_custom_score(df):
-    """Calcola un punteggio personalizzato basato su RSI e performance"""
-    scores = []
-    for _, row in df.iterrows():
-        score = 0
-        
-        # RSI score (migliore tra 50-70)
-        rsi = row.get('RSI', 50)
-        if 50 <= rsi <= 70:
-            score += 2
-        elif 40 <= rsi <= 80:
-            score += 1
-        
-        # Performance score
-        change = row.get('change', 0)
-        if change > 2:
-            score += 2
-        elif change > 0:
-            score += 1
-        elif change < -2:
-            score -= 1
-        
-        # Volume score (relativo)
-        # Questo è semplificato, in un caso reale useresti la media del volume
-        volume = row.get('volume', 0)
-        if volume > 1_000_000:
-            score += 1
-        
-        scores.append(score)
-    
-    return scores
-
-def format_custom_rating(score):
-    """Converte il punteggio personalizzato in etichetta"""
-    if score >= 4:
-        return '🟢 Excellent'
-    elif score >= 3:
-        return '🟡 Good'
-    elif score >= 2:
-        return '⚪ Fair'
-    elif score >= 1:
-        return '🟠 Poor'
+def format_technical_rating(rating: float) -> str:
+    """Formatta il rating tecnico in etichette leggibili"""
+    if pd.isna(rating):
+        return 'N/A'
+    elif rating >= 0.5:
+        return '🟢 Strong Buy'
+    elif rating >= 0.1:
+        return '🟡 Buy'
+    elif rating >= -0.1:
+        return '⚪ Neutral'
+    elif rating >= -0.5:
+        return '🟠 Sell'
     else:
-        return '🔴 Weak'
+        return '🔴 Strong Sell'
 
 def format_currency(value, currency='USD'):
     """Formatta i valori monetari"""
@@ -243,343 +105,193 @@ def format_currency(value, currency='USD'):
 
 # Header principale
 st.markdown('<h1 class="main-header">📊 Stock Screener Pro</h1>', unsafe_allow_html=True)
-st.markdown("### Versione Corretta - Trova le migliori opportunità di investimento")
+st.markdown("### Trova le migliori opportunità di investimento in tempo reale")
 
-# Controllo disponibilità TradingView
-if not TV_AVAILABLE:
-    st.error("❌ TradingView Screener non disponibile. Installa con: pip install tradingview-screener")
-    st.stop()
+# Sidebar con controlli
+st.sidebar.header("🎛️ Impostazioni Filtri")
 
-# Test iniziale
-st.subheader("🔧 Test & Configurazione")
+# Selezione mercati
+markets_options = {
+    'America': 'america',
+    'Europa': ['uk', 'italy', 'germany', 'spain', 'france', 'netherlands', 'switzerland', 'denmark', 'sweden'],
+    'Asia': ['china', 'japan', 'india'],
+    'Altri': ['brazil', 'australia', 'canada', 'russia']
+}
 
-test_mode = st.radio(
-    "Seleziona modalità:",
-    ["🧪 Test Campi Disponibili", "🚀 Screener Base", "⚙️ Screener Avanzato"]
-)
+selected_markets = []
+for region, markets in markets_options.items():
+    if st.sidebar.checkbox(f"📍 {region}", value=True):
+        if isinstance(markets, list):
+            selected_markets.extend(markets)
+        else:
+            selected_markets.append(markets)
 
-if test_mode == "🧪 Test Campi Disponibili":
-    st.write("Questo test verifica quali campi sono disponibili nell'API di TradingView.")
+# Filtri numerici
+st.sidebar.subheader("💰 Market Cap")
+min_mcap = st.sidebar.number_input("Min Market Cap (M)", value=100, step=50) * 1_000_000
+max_mcap = st.sidebar.number_input("Max Market Cap (B)", value=200, step=10) * 1_000_000_000
+
+st.sidebar.subheader("📈 Indicatori Tecnici")
+rsi_range = st.sidebar.slider("RSI Range", 0, 100, (50, 70))
+volatility_min = st.sidebar.slider("Volatilità Minima %", 0.0, 10.0, 2.0, 0.1)
+eps_growth_min = st.sidebar.slider("Crescita EPS Min %", 0, 50, 10)
+
+# Pulsante per aggiornare
+if st.sidebar.button("🔄 Aggiorna Dati", use_container_width=True):
+    st.cache_data.clear()
+
+# Area principale
+col1, col2, col3, col4 = st.columns(4)
+
+# Carica dati
+with st.spinner('🔍 Scansione mercati in corso...'):
+    df = get_screener_data(
+        selected_markets, min_mcap, max_mcap, 
+        rsi_range[0], rsi_range[1], volatility_min, eps_growth_min
+    )
+
+if not df.empty:
+    # Aggiungi formattazioni
+    df['rating_label'] = df['Recommend.All'].apply(format_technical_rating)
+    df['market_cap_formatted'] = df.apply(lambda x: format_currency(x['market_cap_basic'], x['currency']), axis=1)
+    df['price_formatted'] = df.apply(lambda x: f"{x['close']:.2f} {x['currency']}", axis=1)
+    df['change_formatted'] = df['change'].apply(lambda x: f"{x:+.2f}%" if not pd.isna(x) else 'N/A')
     
-    if st.button("🔍 Testa Campi"):
-        success, test_df, fields = test_available_fields()
-        if success and not test_df.empty:
-            st.write("**Esempio di dati disponibili:**")
-            st.dataframe(test_df)
-
-elif test_mode == "🚀 Screener Base":
-    st.write("Screener con filtri base e campi verificati.")
-    
-    # Selezione mercati
-    st.subheader("📍 Selezione Mercati")
-    col1, col2, col3 = st.columns(3)
-    
+    # Metriche principali
     with col1:
-        usa = st.checkbox("🇺🇸 USA", value=True)
+        st.metric("📊 Titoli Trovati", len(df))
     with col2:
-        europe = st.checkbox("🇪🇺 Europa", value=False)
+        avg_mcap = df['market_cap_basic'].mean()
+        st.metric("💰 Market Cap Medio", format_currency(avg_mcap))
     with col3:
-        asia = st.checkbox("🌏 Asia", value=False)
+        strong_buy = len(df[df['Recommend.All'] >= 0.5])
+        st.metric("🟢 Strong Buy", strong_buy)
+    with col4:
+        avg_rsi = df['RSI'].mean()
+        st.metric("📈 RSI Medio", f"{avg_rsi:.1f}")
     
-    markets = []
-    if usa:
-        markets.append('america')
-    if europe:
-        markets.extend(['uk', 'germany', 'france'])
-    if asia:
-        markets.extend(['japan', 'china'])
+    # Grafici
+    st.subheader("📊 Analisi Visuale")
     
-    # Limite risultati
-    limit = st.slider("📊 Numero massimo risultati", 10, 200, 50)
+    col_chart1, col_chart2 = st.columns(2)
     
-    if st.button("▶️ Esegui Screener Base", use_container_width=True):
-        if not markets:
-            st.error("❌ Seleziona almeno un mercato!")
-        else:
-            with st.spinner('🔍 Scansione in corso...'):
-                df = get_screener_data_working(markets, limit)
-            
-            if not df.empty:
-                # Metriche principali
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("📊 Titoli Trovati", len(df))
-                with col2:
-                    if 'market_cap_basic' in df.columns:
-                        avg_mcap = df['market_cap_basic'].mean()
-                        st.metric("💰 Market Cap Medio", format_currency(avg_mcap))
-                with col3:
-                    if 'RSI' in df.columns:
-                        avg_rsi = df['RSI'].mean()
-                        st.metric("📈 RSI Medio", f"{avg_rsi:.1f}")
-                with col4:
-                    if 'change' in df.columns:
-                        avg_change = df['change'].mean()
-                        st.metric("📊 Variazione Media", f"{avg_change:+.2f}%")
-                
-                # Grafici
-                if len(df) > 5:
-                    st.subheader("📊 Analisi Visuale")
-                    
-                    col_chart1, col_chart2 = st.columns(2)
-                    
-                    with col_chart1:
-                        if 'sector' in df.columns:
-                            sector_counts = df['sector'].value_counts().head(8)
-                            fig_sector = px.pie(
-                                values=sector_counts.values,
-                                names=sector_counts.index,
-                                title="🏭 Distribuzione per Settore"
-                            )
-                            st.plotly_chart(fig_sector, use_container_width=True)
-                    
-                    with col_chart2:
-                        if 'RSI' in df.columns and 'change' in df.columns:
-                            fig_scatter = px.scatter(
-                                df, x='RSI', y='change',
-                                color='country' if 'country' in df.columns else None,
-                                size='market_cap_basic' if 'market_cap_basic' in df.columns else None,
-                                hover_data=['description'],
-                                title="📈 RSI vs Performance"
-                            )
-                            st.plotly_chart(fig_scatter, use_container_width=True)
-                
-                # Tabella risultati
-                st.subheader("📋 Risultati Dettagliati")
-                
-                # Prepara colonne per visualizzazione
-                display_df = df.copy()
-                
-                if 'market_cap_basic' in df.columns and 'currency' in df.columns:
-                    display_df['market_cap_formatted'] = df.apply(
-                        lambda x: format_currency(x['market_cap_basic'], x.get('currency', 'USD')),
-                        axis=1
-                    )
-                
-                if 'close' in df.columns and 'currency' in df.columns:
-                    display_df['price_formatted'] = df.apply(
-                        lambda x: f"{x['close']:.2f} {x.get('currency', 'USD')}",
-                        axis=1
-                    )
-                
-                if 'change' in df.columns:
-                    display_df['change_formatted'] = df['change'].apply(
-                        lambda x: f"{x:+.2f}%" if not pd.isna(x) else 'N/A'
-                    )
-                
-                # Seleziona colonne da mostrare
-                show_columns = []
-                if 'description' in display_df.columns:
-                    show_columns.append('description')
-                if 'country' in display_df.columns:
-                    show_columns.append('country')
-                if 'sector' in display_df.columns:
-                    show_columns.append('sector')
-                if 'price_formatted' in display_df.columns:
-                    show_columns.append('price_formatted')
-                elif 'close' in display_df.columns:
-                    show_columns.append('close')
-                if 'market_cap_formatted' in display_df.columns:
-                    show_columns.append('market_cap_formatted')
-                if 'change_formatted' in display_df.columns:
-                    show_columns.append('change_formatted')
-                if 'RSI' in display_df.columns:
-                    show_columns.append('RSI')
-                
-                # Rinomina colonne per visualizzazione
-                column_names = {
-                    'description': '📈 Titolo',
-                    'country': '🌍 Paese',
-                    'sector': '🏭 Settore',
-                    'price_formatted': '💰 Prezzo',
-                    'close': '💰 Prezzo',
-                    'market_cap_formatted': '📊 Market Cap',
-                    'change_formatted': '📈 Variazione',
-                    'RSI': '📊 RSI'
-                }
-                
-                if show_columns:
-                    display_names = {k: column_names.get(k, k) for k in show_columns}
-                    st.dataframe(
-                        display_df[show_columns].rename(columns=display_names),
-                        use_container_width=True
-                    )
-                    
-                    # Download
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label="⬇️ Scarica CSV Completo",
-                        data=csv,
-                        file_name=f"screener_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.write("**Dati grezzi disponibili:**")
-                    st.dataframe(df)
-
-elif test_mode == "⚙️ Screener Avanzato":
-    st.write("Screener con filtri personalizzabili avanzati.")
+    with col_chart1:
+        # Distribuzione per settore
+        if 'sector' in df.columns:
+            sector_counts = df['sector'].value_counts().head(10)
+            fig_sector = px.pie(
+                values=sector_counts.values, 
+                names=sector_counts.index,
+                title="🏭 Distribuzione per Settore"
+            )
+            st.plotly_chart(fig_sector, use_container_width=True)
     
-    # Sidebar per filtri avanzati
-    st.sidebar.header("🎛️ Filtri Avanzati")
+    with col_chart2:
+        # Distribuzione rating tecnico
+        rating_counts = df['rating_label'].value_counts()
+        fig_rating = px.bar(
+            x=rating_counts.index, 
+            y=rating_counts.values,
+            title="🎯 Distribuzione Rating Tecnico",
+            color=rating_counts.values,
+            color_continuous_scale="RdYlGn"
+        )
+        st.plotly_chart(fig_rating, use_container_width=True)
     
-    # Mercati
-    markets_selection = st.sidebar.multiselect(
-        "📍 Mercati:",
-        ['america', 'uk', 'germany', 'france', 'japan', 'china', 'italy', 'spain'],
-        default=['america']
+    # Scatter plot RSI vs Performance
+    st.subheader("📈 RSI vs Performance")
+    fig_scatter = px.scatter(
+        df, x='RSI', y='change', 
+        color='rating_label',
+        size='market_cap_basic',
+        hover_data=['description', 'country', 'sector'],
+        title="Relazione tra RSI e Performance Giornaliera"
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    # Tabella risultati
+    st.subheader("📋 Risultati Dettagliati")
+    
+    # Filtri per la tabella
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    
+    with col_filter1:
+        countries = ['Tutti'] + sorted(df['country'].unique().tolist())
+        selected_country = st.selectbox("🌍 Paese", countries)
+    
+    with col_filter2:
+        sectors = ['Tutti'] + sorted(df['sector'].dropna().unique().tolist())
+        selected_sector = st.selectbox("🏭 Settore", sectors)
+    
+    with col_filter3:
+        ratings = ['Tutti'] + sorted(df['rating_label'].unique().tolist())
+        selected_rating = st.selectbox("🎯 Rating", ratings)
+    
+    # Applica filtri
+    filtered_df = df.copy()
+    if selected_country != 'Tutti':
+        filtered_df = filtered_df[filtered_df['country'] == selected_country]
+    if selected_sector != 'Tutti':
+        filtered_df = filtered_df[filtered_df['sector'] == selected_sector]
+    if selected_rating != 'Tutti':
+        filtered_df = filtered_df[filtered_df['rating_label'] == selected_rating]
+    
+    # Mostra tabella
+    display_columns = [
+        'description', 'country', 'sector', 'price_formatted', 
+        'market_cap_formatted', 'rating_label', 'change_formatted', 'RSI'
+    ]
+    
+    column_names = {
+        'description': '📈 Titolo',
+        'country': '🌍 Paese',
+        'sector': '🏭 Settore',
+        'price_formatted': '💰 Prezzo',
+        'market_cap_formatted': '📊 Market Cap',
+        'rating_label': '🎯 Rating',
+        'change_formatted': '📈 Variazione',
+        'RSI': '📊 RSI'
+    }
+    
+    st.dataframe(
+        filtered_df[display_columns].rename(columns=column_names),
+        use_container_width=True,
+        height=400
     )
     
-    # Market Cap
-    st.sidebar.subheader("💰 Market Cap")
-    min_mcap = st.sidebar.selectbox(
-        "Minimo:",
-        [100_000_000, 500_000_000, 1_000_000_000, 5_000_000_000],
-        index=1,
-        format_func=lambda x: f"{x/1e9:.1f}B" if x >= 1e9 else f"{x/1e6:.0f}M"
+    # Download dati
+    csv = filtered_df.to_csv(index=False)
+    st.download_button(
+        label="⬇️ Scarica CSV",
+        data=csv,
+        file_name=f"screener_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv"
     )
     
-    max_mcap = st.sidebar.selectbox(
-        "Massimo:",
-        [10_000_000_000, 50_000_000_000, 100_000_000_000, 1_000_000_000_000],
-        index=2,
-        format_func=lambda x: f"{x/1e12:.1f}T" if x >= 1e12 else f"{x/1e9:.0f}B"
-    )
-    
-    # RSI
-    st.sidebar.subheader("📊 RSI")
-    rsi_range = st.sidebar.slider("Range RSI:", 0, 100, (45, 75))
-    
-    if st.button("🚀 Esegui Screener Avanzato", use_container_width=True):
-        if not markets_selection:
-            st.error("❌ Seleziona almeno un mercato!")
-        else:
-            with st.spinner('🔍 Analisi avanzata in corso...'):
-                df = get_advanced_screener_data(
-                    markets_selection, min_mcap, max_mcap, rsi_range[0], rsi_range[1]
-                )
-            
-            if not df.empty:
-                # Mostra risultati con rating personalizzato
-                st.success(f"🎯 Trovati {len(df)} titoli che soddisfano i criteri avanzati!")
-                
-                # Metriche
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("📊 Titoli Trovati", len(df))
-                with col2:
-                    if 'custom_score' in df.columns:
-                        excellent = len(df[df['custom_score'] >= 4])
-                        st.metric("🟢 Excellent", excellent)
-                with col3:
-                    if 'market_cap_basic' in df.columns:
-                        total_mcap = df['market_cap_basic'].sum()
-                        st.metric("💰 Market Cap Totale", format_currency(total_mcap))
-                with col4:
-                    if 'change' in df.columns:
-                        positive_change = len(df[df['change'] > 0])
-                        st.metric("📈 Performance Positive", positive_change)
-                
-                # Grafici avanzati
-                if 'rating_label' in df.columns:
-                    st.subheader("📊 Analisi dei Rating")
-                    
-                    col_chart1, col_chart2 = st.columns(2)
-                    
-                    with col_chart1:
-                        rating_counts = df['rating_label'].value_counts()
-                        fig_rating = px.bar(
-                            x=rating_counts.index,
-                            y=rating_counts.values,
-                            title="🎯 Distribuzione Rating Personalizzati",
-                            color=rating_counts.values,
-                            color_continuous_scale="RdYlGn"
-                        )
-                        st.plotly_chart(fig_rating, use_container_width=True)
-                    
-                    with col_chart2:
-                        if 'custom_score' in df.columns and 'market_cap_basic' in df.columns:
-                            fig_bubble = px.scatter(
-                                df, x='custom_score', y='change',
-                                size='market_cap_basic',
-                                color='rating_label',
-                                hover_data=['description', 'country'],
-                                title="💎 Score vs Performance (dimensione=Market Cap)"
-                            )
-                            st.plotly_chart(fig_bubble, use_container_width=True)
-                
-                # Tabella con rating
-                st.subheader("🏆 Top Performers")
-                
-                if 'custom_score' in df.columns:
-                    top_df = df.nlargest(20, 'custom_score')
-                else:
-                    top_df = df.head(20)
-                
-                # Prepara visualizzazione
-                display_cols = ['description', 'country', 'sector']
-                if 'rating_label' in df.columns:
-                    display_cols.append('rating_label')
-                if 'custom_score' in df.columns:
-                    display_cols.append('custom_score')
-                display_cols.extend(['close', 'change', 'RSI'])
-                
-                available_cols = [col for col in display_cols if col in top_df.columns]
-                
-                if available_cols:
-                    st.dataframe(
-                        top_df[available_cols].round(2),
-                        use_container_width=True
-                    )
-                
-                # Download
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="⬇️ Scarica Risultati Completi",
-                    data=csv,
-                    file_name=f"screener_advanced_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.warning("⚠️ Nessun risultato trovato con i filtri selezionati. Prova ad allargare i parametri.")
+else:
+    st.warning("⚠️ Nessun titolo trovato con i filtri selezionati. Prova a modificare i parametri.")
 
 # Footer
 st.markdown("---")
-st.markdown(f"""
+st.markdown("""
 <div style='text-align: center; color: #666; padding: 1rem;'>
-    📊 Stock Screener Pro | ⏰ {datetime.now().strftime("%d/%m/%Y %H:%M")} | 
-    ✅ Versione Corretta - Campi Verificati
+    📊 Stock Screener Pro | Dati forniti da TradingView | 
+    ⏰ Ultimo aggiornamento: {}
 </div>
-""", unsafe_allow_html=True)
+""".format(datetime.now().strftime("%d/%m/%Y %H:%M")), unsafe_allow_html=True)
 
-# Info utilizzo
-with st.expander("ℹ️ Come Utilizzare lo Screener"):
-    st.markdown("""
-    ### 🎯 Modalità Disponibili:
-    
-    **🧪 Test Campi:** Verifica quali dati sono disponibili nell'API
-    
-    **🚀 Screener Base:** 
-    - Filtri semplici ma efficaci
-    - Titoli con prezzo > SMA50
-    - RSI tra 40-80
-    - Volume minimo garantito
-    
-    **⚙️ Screener Avanzato:**
-    - Filtri personalizzabili
-    - Rating personalizzato basato su RSI, performance e volume
-    - Analisi visuale avanzata
-    
-    ### 📊 Criteri di Selezione:
-    - **Trend:** Prezzo sopra media mobile 50 e 200 giorni
-    - **Momentum:** RSI in range ottimale
-    - **Liquidità:** Volume minimo per garantire tradabilità
-    - **Qualità:** Market cap minimo per stabilità
-    
-    ### 💡 Suggerimenti:
-    - Inizia con il test per vedere i dati disponibili
-    - Usa lo screener base per risultati rapidi
-    - Passa all'avanzato per analisi dettagliate
-    """)
+st.markdown("""
+### ℹ️ Come usare questo screener:
+1. **Seleziona i mercati** dalla sidebar
+2. **Imposta i filtri** per market cap e indicatori tecnici
+3. **Visualizza i risultati** nelle tabelle e grafici
+4. **Filtra ulteriormente** usando i controlli sopra la tabella
+5. **Scarica i dati** in formato CSV per analisi offline
+
+**Criteri di selezione:**
+- Prezzo > SMA50 e SMA200 (trend rialzista)
+- MACD > Signal (momentum positivo)
+- RSI tra i valori selezionati
+- Crescita EPS positiva
+- Volatilità minima per opportunità di trading
+""")
