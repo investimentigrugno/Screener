@@ -53,7 +53,7 @@ def get_screener_data(markets, min_mcap, max_mcap, rsi_min, rsi_max, volatility_
             Query()
             .set_markets(*markets)
             .select('isin', 'description', 'country', 'sector', 'currency', 'close', 
-                   'Recommend.All', 'market_cap_basic', 'RSI', 'Volatility.D',
+                   'market_cap_basic', 'RSI', 'Volatility.D',
                    'earning_per_share_diluted_yoy_growth_fy', 'SMA50', 'SMA200',
                    'MACD.macd', 'MACD.signal', 'volume', 'change')
             .where(
@@ -75,8 +75,35 @@ def get_screener_data(markets, min_mcap, max_mcap, rsi_min, rsi_max, volatility_
         st.error(f"Errore nel recupero dati: {e}")
         return pd.DataFrame()
 
-def format_technical_rating(rating: float) -> str:
-    """Formatta il rating tecnico in etichette leggibili"""
+def create_synthetic_rating(row):
+    """Crea un rating sintetico basato su RSI e MACD"""
+    score = 0
+    
+    # RSI scoring
+    if not pd.isna(row['RSI']):
+        if row['RSI'] < 30:
+            score += 1  # Oversold - potential buy
+        elif row['RSI'] > 70:
+            score -= 1  # Overbought - potential sell
+    
+    # MACD scoring
+    if not pd.isna(row['MACD.macd']) and not pd.isna(row['MACD.signal']):
+        if row['MACD.macd'] > row['MACD.signal']:
+            score += 1  # Bullish signal
+        else:
+            score -= 1  # Bearish signal
+    
+    # Price vs SMA scoring
+    if not pd.isna(row['close']) and not pd.isna(row['SMA50']) and not pd.isna(row['SMA200']):
+        if row['close'] > row['SMA50'] and row['close'] > row['SMA200']:
+            score += 1  # Above moving averages
+        elif row['close'] < row['SMA50'] and row['close'] < row['SMA200']:
+            score -= 1  # Below moving averages
+    
+    return score / 3  # Normalize to [-1, 1] range
+
+def format_recommendation(rating: float) -> str:
+    """Formatta la raccomandazione in etichette leggibili"""
     if pd.isna(rating):
         return 'N/A'
     elif rating >= 0.5:
@@ -89,8 +116,6 @@ def format_technical_rating(rating: float) -> str:
         return '🟠 Sell'
     else:
         return '🔴 Strong Sell'
-
-def format_currency(value, currency='USD'):
     """Formatta i valori monetari"""
     if pd.isna(value):
         return 'N/A'
@@ -152,7 +177,8 @@ with st.spinner('🔍 Scansione mercati in corso...'):
 
 if not df.empty:
     # Aggiungi formattazioni
-    df['rating_label'] = df['Recommend.All'].apply(format_technical_rating)
+    df['synthetic_rating'] = df.apply(create_synthetic_rating, axis=1)
+    df['rating_label'] = df['synthetic_rating'].apply(format_recommendation)
     df['market_cap_formatted'] = df.apply(lambda x: format_currency(x['market_cap_basic'], x['currency']), axis=1)
     df['price_formatted'] = df.apply(lambda x: f"{x['close']:.2f} {x['currency']}", axis=1)
     df['change_formatted'] = df['change'].apply(lambda x: f"{x:+.2f}%" if not pd.isna(x) else 'N/A')
@@ -164,7 +190,7 @@ if not df.empty:
         avg_mcap = df['market_cap_basic'].mean()
         st.metric("💰 Market Cap Medio", format_currency(avg_mcap))
     with col3:
-        strong_buy = len(df[df['Recommend.All'] >= 0.5])
+        strong_buy = len(df[df['synthetic_rating'] >= 0.5])
         st.metric("🟢 Strong Buy", strong_buy)
     with col4:
         avg_rsi = df['RSI'].mean()
