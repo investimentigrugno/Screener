@@ -52,7 +52,7 @@ def get_screener_data(markets, min_mcap, max_mcap, rsi_min, rsi_max, volatility_
         query = (
             Query()
             .set_markets(*markets)
-            .select('isin', 'description', 'country', 'sector', 'currency', 'close', 
+            .select('name', 'description', 'country', 'sector', 'currency', 'close', 
                    'market_cap_basic', 'RSI', 'Volatility.D',
                    'earning_per_share_diluted_yoy_growth_fy', 'SMA50', 'SMA200',
                    'MACD.macd', 'MACD.signal', 'volume', 'change')
@@ -116,6 +116,8 @@ def format_recommendation(rating: float) -> str:
         return '🟠 Sell'
     else:
         return '🔴 Strong Sell'
+
+def format_currency(value, currency='USD'):
     """Formatta i valori monetari"""
     if pd.isna(value):
         return 'N/A'
@@ -179,8 +181,8 @@ if not df.empty:
     # Aggiungi formattazioni
     df['synthetic_rating'] = df.apply(create_synthetic_rating, axis=1)
     df['rating_label'] = df['synthetic_rating'].apply(format_recommendation)
-    df['market_cap_formatted'] = df.apply(lambda x: format_currency(x['market_cap_basic'], x['currency']), axis=1)
-    df['price_formatted'] = df.apply(lambda x: f"{x['close']:.2f} {x['currency']}", axis=1)
+    df['market_cap_formatted'] = df.apply(lambda x: format_currency(x['market_cap_basic'], x['currency']) if not pd.isna(x['market_cap_basic']) else 'N/A', axis=1)
+    df['price_formatted'] = df.apply(lambda x: f"{x['close']:.2f} {x['currency']}" if not pd.isna(x['close']) else 'N/A', axis=1)
     df['change_formatted'] = df['change'].apply(lambda x: f"{x:+.2f}%" if not pd.isna(x) else 'N/A')
     
     # Metriche principali
@@ -203,14 +205,19 @@ if not df.empty:
     
     with col_chart1:
         # Distribuzione per settore
-        if 'sector' in df.columns:
+        if 'sector' in df.columns and not df['sector'].isna().all():
             sector_counts = df['sector'].value_counts().head(10)
-            fig_sector = px.pie(
-                values=sector_counts.values, 
-                names=sector_counts.index,
-                title="🏭 Distribuzione per Settore"
-            )
-            st.plotly_chart(fig_sector, use_container_width=True)
+            if not sector_counts.empty:
+                fig_sector = px.pie(
+                    values=sector_counts.values, 
+                    names=sector_counts.index,
+                    title="🏭 Distribuzione per Settore"
+                )
+                st.plotly_chart(fig_sector, use_container_width=True)
+            else:
+                st.info("Nessun dato settore disponibile")
+        else:
+            st.info("Nessun dato settore disponibile")
     
     with col_chart2:
         # Distribuzione rating tecnico
@@ -230,7 +237,7 @@ if not df.empty:
         df, x='RSI', y='change', 
         color='rating_label',
         size='market_cap_basic',
-        hover_data=['description', 'country', 'sector'],
+        hover_data=['description', 'country', 'sector'] if 'description' in df.columns else ['name', 'country', 'sector'],
         title="Relazione tra RSI e Performance Giornaliera"
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
@@ -242,12 +249,18 @@ if not df.empty:
     col_filter1, col_filter2, col_filter3 = st.columns(3)
     
     with col_filter1:
-        countries = ['Tutti'] + sorted(df['country'].unique().tolist())
-        selected_country = st.selectbox("🌍 Paese", countries)
+        if 'country' in df.columns:
+            countries = ['Tutti'] + sorted(df['country'].dropna().unique().tolist())
+            selected_country = st.selectbox("🌍 Paese", countries)
+        else:
+            selected_country = 'Tutti'
     
     with col_filter2:
-        sectors = ['Tutti'] + sorted(df['sector'].dropna().unique().tolist())
-        selected_sector = st.selectbox("🏭 Settore", sectors)
+        if 'sector' in df.columns:
+            sectors = ['Tutti'] + sorted(df['sector'].dropna().unique().tolist())
+            selected_sector = st.selectbox("🏭 Settore", sectors)
+        else:
+            selected_sector = 'Tutti'
     
     with col_filter3:
         ratings = ['Tutti'] + sorted(df['rating_label'].unique().tolist())
@@ -255,30 +268,43 @@ if not df.empty:
     
     # Applica filtri
     filtered_df = df.copy()
-    if selected_country != 'Tutti':
+    if selected_country != 'Tutti' and 'country' in df.columns:
         filtered_df = filtered_df[filtered_df['country'] == selected_country]
-    if selected_sector != 'Tutti':
+    if selected_sector != 'Tutti' and 'sector' in df.columns:
         filtered_df = filtered_df[filtered_df['sector'] == selected_sector]
     if selected_rating != 'Tutti':
         filtered_df = filtered_df[filtered_df['rating_label'] == selected_rating]
     
-    # Mostra tabella
-    display_columns = [
-        'description', 'country', 'sector', 'price_formatted', 
-        'market_cap_formatted', 'rating_label', 'change_formatted', 'RSI'
-    ]
+    # Definisci colonne display basate su quelle disponibili
+    available_columns = df.columns.tolist()
+    display_columns = []
+    column_names = {}
     
-    column_names = {
-        'description': '📈 Titolo',
-        'country': '🌍 Paese',
-        'sector': '🏭 Settore',
+    if 'description' in available_columns:
+        display_columns.append('description')
+        column_names['description'] = '📈 Titolo'
+    elif 'name' in available_columns:
+        display_columns.append('name')
+        column_names['name'] = '📈 Titolo'
+    
+    if 'country' in available_columns:
+        display_columns.append('country')
+        column_names['country'] = '🌍 Paese'
+    
+    if 'sector' in available_columns:
+        display_columns.append('sector')
+        column_names['sector'] = '🏭 Settore'
+    
+    display_columns.extend(['price_formatted', 'market_cap_formatted', 'rating_label', 'change_formatted', 'RSI'])
+    column_names.update({
         'price_formatted': '💰 Prezzo',
         'market_cap_formatted': '📊 Market Cap',
         'rating_label': '🎯 Rating',
         'change_formatted': '📈 Variazione',
         'RSI': '📊 RSI'
-    }
+    })
     
+    # Mostra tabella
     st.dataframe(
         filtered_df[display_columns].rename(columns=column_names),
         use_container_width=True,
