@@ -289,7 +289,7 @@ if not st.session_state.data.empty:
     display_columns = st.multiselect(
         "Seleziona colonne da visualizzare:",
         available_columns,
-        default=['Company', 'Country', 'Sector', 'Price', 'Rating']
+        default=['Company', 'Country', 'Sector', 'Price', 'Currency', 'Rating']
     )
     
     if display_columns:
