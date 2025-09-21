@@ -105,7 +105,10 @@ def calculate_investment_score(df):
             return 1
 
     scored_df['MACD_Score'] = scored_df.apply(
-        lambda row: macd_score(row['MACD.macd'], row['MACD.signal']), axis=1
+        lambda row: macd_score(
+            row.get('MACD.macd', None) if 'MACD.macd' in row.index else row.get('macd', None), 
+            row.get('MACD.signal', None) if 'MACD.signal' in row.index else row.get('signal', None)
+        ), axis=1
     )
     scored_df['Investment_Score'] += scored_df['MACD_Score'] * 0.15
 
@@ -349,7 +352,8 @@ if not st.session_state.top_5_stocks.empty:
                 st.markdown(f"**{stock['Company']}** ({stock['Symbol']})")
                 st.markdown(f"*{stock['Country']} | {stock['Sector']}*")
                 st.markdown(f"💰 **${stock['Price']}** ({stock['Change %']})")
-                st.caption(f"📊 {stock['Recommendation_reason']}")
+                # CORRECTED: Changed from 'Recommendation_reason' to 'Recommendation_Reason'
+                st.caption(f"📊 {stock['Recommendation_Reason']}")
 
             with col3:
                 st.markdown("**Metriche Chiave:**")
