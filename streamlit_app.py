@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import webbrowser
 import numpy as np
-import finnhub
+import requests
 from typing import List, Dict
 
 # --- SESSION STATE INITIALIZATION ---
@@ -27,12 +27,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- FINNHUB CLIENT SETUP ---
-@st.cache_resource
-def get_finnhub_client():
-    """Crea e restituisce client Finnhub con API key"""
-    api_key = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
-    return finnhub.Client(api_key=api_key)
+# --- FINNHUB API CONFIGURATION ---
+FINNHUB_API_KEY = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 # --- TRADUZIONE SEMPLICE (Dizionario) ---
 def translate_to_italian(text):
@@ -337,17 +334,22 @@ def get_tradingview_url(symbol):
 
     return f"https://www.tradingview.com/chart/?symbol={symbol}"
 
-def fetch_finnhub_market_news():
+def fetch_finnhub_news_via_requests():
     """
-    Scarica notizie di mercato da Finnhub API con traduzione in italiano
+    Scarica notizie di mercato da Finnhub usando requests invece del pacchetto finnhub-python
     """
     try:
-        client = get_finnhub_client()
+        # URL per notizie generali Finnhub
+        url = f"{FINNHUB_BASE_URL}/news"
+        params = {
+            'category': 'general',
+            'token': FINNHUB_API_KEY
+        }
 
-        with st.spinner("📰 Scarico notizie da Finnhub..."):
-            # Scarica notizie generali
-            news_data = client.general_news('general', min_id=0)
+        response = requests.get(url, params=params, timeout=10)
 
+        if response.status_code == 200:
+            news_data = response.json()
             formatted_news = []
 
             for item in news_data[:8]:  # Prendi le prime 8 notizie
@@ -361,10 +363,10 @@ def fetch_finnhub_market_news():
 
                 # Determina impatto basato su parole chiave
                 headline_lower = original_headline.lower()
-                if any(word in headline_lower for word in ['surge', 'rally', 'gain', 'rise', 'bull', 'up']):
+                if any(word in headline_lower for word in ['surge', 'rally', 'gain', 'rise', 'bull', 'up', 'soar']):
                     impact_emoji = "📈"
                     impact_text = "Positivo per il mercato"
-                elif any(word in headline_lower for word in ['fall', 'drop', 'decline', 'bear', 'down', 'crash']):
+                elif any(word in headline_lower for word in ['fall', 'drop', 'decline', 'bear', 'down', 'crash', 'plunge']):
                     impact_emoji = "📉"
                     impact_text = "Negativo per il mercato"
                 else:
@@ -384,15 +386,16 @@ def fetch_finnhub_market_news():
                     "impact": f"{impact_emoji} {impact_text}",
                     "date": news_date,
                     "source": "Finnhub",
-                    "original_title": original_headline,  # Mantieni originale per debug
                     "url": item.get('url', '')
                 })
 
             return formatted_news
+        else:
+            st.warning(f"⚠️ Errore Finnhub API: Status {response.status_code}")
+            return get_fallback_news()
 
     except Exception as e:
-        st.warning(f"⚠️ Errore Finnhub API: {e}")
-        # Fallback a notizie simulate
+        st.warning(f"⚠️ Errore connessione Finnhub: {e}")
         return get_fallback_news()
 
 def get_fallback_news():
@@ -432,6 +435,23 @@ def get_fallback_news():
             "url": ""
         }
     ]
+
+def test_finnhub_connection():
+    """Testa la connessione all'API Finnhub"""
+    try:
+        url = f"{FINNHUB_BASE_URL}/quote"
+        params = {
+            'symbol': 'AAPL',
+            'token': FINNHUB_API_KEY
+        }
+        response = requests.get(url, params=params, timeout=5)
+
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('c') is not None  # Controlla se esiste prezzo corrente
+        return False
+    except:
+        return False
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_screener_data():
@@ -531,17 +551,11 @@ st.markdown("Analizza le migliori opportunità di investimento con criteri tecni
 
 # Finnhub Status Indicator
 with st.expander("🔑 Stato API Finnhub", expanded=False):
-    try:
-        client = get_finnhub_client()
-        # Test API connection
-        test_quote = client.quote('AAPL')
-        if test_quote.get('c'):  # Check if current price exists
-            st.success("✅ Connessione Finnhub attiva - Notizie live disponibili")
-            st.info(f"💡 API Key configurata: d38fnb9r01q...np0")
-        else:
-            st.warning("⚠️ Connessione Finnhub limitata - Usando notizie simulate")
-    except Exception as e:
-        st.error(f"❌ Errore Finnhub: {e}")
+    if test_finnhub_connection():
+        st.success("✅ Connessione Finnhub attiva - Notizie live disponibili")
+        st.info(f"💡 API Key configurata: {FINNHUB_API_KEY[:15]}...{FINNHUB_API_KEY[-4:]}")
+    else:
+        st.warning("⚠️ Connessione Finnhub limitata - Usando notizie simulate")
         st.info("📰 Verranno mostrate notizie simulate")
 
 st.markdown("---")
@@ -558,7 +572,7 @@ with col1:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
             # Fetch fresh market news from Finnhub
-            st.session_state.market_news = fetch_finnhub_market_news()
+            st.session_state.market_news = fetch_finnhub_news_via_requests()
             st.session_state.last_update = datetime.now()
 
             # Success message with news status
@@ -950,7 +964,7 @@ L'algoritmo valuta ogni azione su 6 parametri:
 
 ### 📰 Notizie Finnhub:
 
-- **API attiva**: Notizie live dal mercato
+- **API diretta**: Via requests (senza pacchetto finnhub-python)
 - **Traduzione**: Automatica in italiano
 - **Sentiment**: Analisi impatto mercato
 - **Fallback**: Notizie simulate se API non disponibile
