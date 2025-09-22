@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import webbrowser
 import numpy as np
-import requests
+import finnhub
 from typing import List, Dict
 
 # --- SESSION STATE INITIALIZATION ---
@@ -26,6 +26,136 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+# --- FINNHUB CLIENT SETUP ---
+@st.cache_resource
+def get_finnhub_client():
+    """Crea e restituisce client Finnhub con API key"""
+    api_key = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
+    return finnhub.Client(api_key=api_key)
+
+# --- TRADUZIONE SEMPLICE (Dizionario) ---
+def translate_to_italian(text):
+    """Traduzione basilare inglese -> italiano per termini finanziari comuni"""
+    translations = {
+        # Stock/Financial terms
+        "stock": "azione", "stocks": "azioni",
+        "market": "mercato", "markets": "mercati",
+        "rally": "rialzo", "rallies": "rialzi", 
+        "rise": "aumento", "rises": "aumenta", "rising": "in aumento",
+        "fall": "calo", "falls": "cala", "falling": "in calo",
+        "gain": "guadagno", "gains": "guadagni",
+        "loss": "perdita", "losses": "perdite",
+        "bull": "rialzista", "bullish": "rialzista",
+        "bear": "ribassista", "bearish": "ribassista",
+        "buy": "acquista", "sell": "vendi",
+        "earnings": "utili", "revenue": "ricavi",
+        "shares": "azioni", "share": "azione",
+        "investors": "investitori", "investor": "investitore",
+        "trading": "trading", "trade": "scambi",
+        "growth": "crescita", "decline": "declino",
+        "federal reserve": "Federal Reserve", "fed": "Fed",
+        "interest rates": "tassi di interesse", "rates": "tassi",
+        "inflation": "inflazione", "economy": "economia",
+        "gdp": "PIL", "unemployment": "disoccupazione",
+        "tech": "tecnologia", "technology": "tecnologia",
+        "banks": "banche", "bank": "banca",
+        "oil": "petrolio", "energy": "energia",
+        "dollar": "dollaro", "currency": "valuta",
+        "bond": "obbligazione", "bonds": "obbligazioni",
+        "yield": "rendimento", "yields": "rendimenti",
+        "volatility": "volatilità", "volume": "volume",
+        "analyst": "analista", "analysts": "analisti",
+        "forecast": "previsione", "estimates": "stime",
+        "quarter": "trimestre", "quarterly": "trimestrale",
+        "annual": "annuale", "monthly": "mensile",
+        "report": "rapporto", "data": "dati",
+        "sector": "settore", "sectors": "settori",
+        "portfolio": "portafoglio", "fund": "fondo",
+        "index": "indice", "indices": "indici",
+        "nasdaq": "Nasdaq", "dow jones": "Dow Jones",
+        "s&p 500": "S&P 500", "wall street": "Wall Street",
+
+        # Common verbs/actions
+        "announces": "annuncia", "announced": "ha annunciato",
+        "reports": "riporta", "reported": "ha riportato",
+        "shows": "mostra", "showing": "mostrando",
+        "reaches": "raggiunge", "reached": "ha raggiunto",
+        "closes": "chiude", "closed": "ha chiuso",
+        "opens": "apre", "opened": "ha aperto",
+        "jumps": "balza", "jumped": "è balzato",
+        "drops": "cala", "dropped": "è calato",
+        "surges": "impenna", "surged": "si è impennato",
+        "hits": "colpisce", "hit": "ha colpito",
+        "beats": "supera", "beat": "ha superato",
+        "misses": "manca", "missed": "ha mancato",
+        "expects": "si aspetta", "expected": "previsto",
+        "sees": "vede", "seen": "visto",
+        "says": "dice", "said": "ha detto",
+
+        # Time expressions
+        "today": "oggi", "yesterday": "ieri",
+        "this week": "questa settimana", "last week": "settimana scorsa",
+        "this month": "questo mese", "last month": "mese scorso",
+        "this year": "quest'anno", "last year": "anno scorso",
+        "morning": "mattina", "afternoon": "pomeriggio",
+        "evening": "sera", "night": "notte",
+
+        # Numbers and percentages (common patterns)
+        "percent": "percento", "percentage": "percentuale",
+        "billion": "miliardi", "million": "milioni",
+        "thousand": "migliaia", "trillion": "trilioni",
+
+        # Prepositions and connectors
+        "after": "dopo", "before": "prima",
+        "during": "durante", "while": "mentre",
+        "following": "seguito da", "ahead of": "prima di",
+        "despite": "nonostante", "due to": "a causa di",
+        "because of": "a causa di", "thanks to": "grazie a",
+
+        # General terms
+        "news": "notizie", "update": "aggiornamento",
+        "analysis": "analisi", "outlook": "prospettive",
+        "performance": "performance", "results": "risultati",
+        "strong": "forte", "weak": "debole",
+        "high": "alto", "higher": "più alto",
+        "low": "basso", "lower": "più basso",
+        "new": "nuovo", "latest": "ultimo",
+        "major": "principale", "significant": "significativo",
+        "global": "globale", "international": "internazionale",
+        "domestic": "domestico", "local": "locale",
+        "business": "business", "company": "azienda",
+        "companies": "aziende", "corporate": "aziendale",
+        "financial": "finanziario", "economic": "economico"
+    }
+
+    # Traduci parola per parola preservando la struttura
+    words = text.split()
+    translated_words = []
+
+    for word in words:
+        # Rimuovi punteggiatura per il matching
+        clean_word = word.lower().strip('.,!?;:"()[]{}')
+
+        # Cerca traduzione
+        if clean_word in translations:
+            # Mantieni la capitalizzazione originale
+            if word[0].isupper():
+                translated = translations[clean_word].capitalize()
+            else:
+                translated = translations[clean_word]
+
+            # Rimetti la punteggiatura
+            for punct in '.,!?;:"()[]{}':
+                if word.endswith(punct):
+                    translated += punct
+                    break
+
+            translated_words.append(translated)
+        else:
+            translated_words.append(word)
+
+    return ' '.join(translated_words)
 
 # --- FUNCTIONS ---
 def format_technical_rating(rating: float) -> str:
@@ -207,128 +337,101 @@ def get_tradingview_url(symbol):
 
     return f"https://www.tradingview.com/chart/?symbol={symbol}"
 
-def fetch_market_news_api() -> List[Dict]:
+def fetch_finnhub_market_news():
     """
-    Fetch current market news from multiple providers
-    Priority: Finnhub -> Alpha Vantage -> NewsAPI -> Fallback
+    Scarica notizie di mercato da Finnhub API con traduzione in italiano
     """
-    news_sources = []
-
-    # 1. Try Finnhub (Free tier: 60 calls/minute)
     try:
-        # Replace with your Finnhub API key from https://finnhub.io/
-        FINNHUB_API_KEY = "d38fnb9r01qlbdj59nq0"  # Get free key at finnhub.io
+        client = get_finnhub_client()
 
-        if FINNHUB_API_KEY != "YOUR_FINNHUB_API_KEY":
-            url = f"https://finnhub.io/api/v1/news?category=general&token={FINNHUB_API_KEY}"
-            response = requests.get(url, timeout=10)
+        with st.spinner("📰 Scarico notizie da Finnhub..."):
+            # Scarica notizie generali
+            news_data = client.general_news('general', min_id=0)
 
-            if response.status_code == 200:
-                data = response.json()
-                for item in data[:6]:  # Limit to top 6 news
-                    news_sources.append({
-                        "title": f"📰 {item.get('headline', 'No title')}",
-                        "description": item.get('summary', 'No description available')[:200] + "...",
-                        "impact": "📊 Market driver",
-                        "date": datetime.fromtimestamp(item.get('datetime', 0)).strftime("%d %b %Y"),
-                        "source": "Finnhub"
-                    })
+            formatted_news = []
+
+            for item in news_data[:8]:  # Prendi le prime 8 notizie
+                # Traduzione titolo e sommario
+                original_headline = item.get('headline', 'Nessun titolo')
+                original_summary = item.get('summary', 'Nessun riassunto disponibile')
+
+                # Traduci i testi
+                translated_headline = translate_to_italian(original_headline)
+                translated_summary = translate_to_italian(original_summary)
+
+                # Determina impatto basato su parole chiave
+                headline_lower = original_headline.lower()
+                if any(word in headline_lower for word in ['surge', 'rally', 'gain', 'rise', 'bull', 'up']):
+                    impact_emoji = "📈"
+                    impact_text = "Positivo per il mercato"
+                elif any(word in headline_lower for word in ['fall', 'drop', 'decline', 'bear', 'down', 'crash']):
+                    impact_emoji = "📉"
+                    impact_text = "Negativo per il mercato"
+                else:
+                    impact_emoji = "📊"
+                    impact_text = "Impatto neutro"
+
+                # Converti timestamp
+                datetime_ts = item.get('datetime', 0)
+                if datetime_ts:
+                    news_date = datetime.fromtimestamp(datetime_ts).strftime("%d %b %Y")
+                else:
+                    news_date = datetime.now().strftime("%d %b %Y")
+
+                formatted_news.append({
+                    "title": f"{impact_emoji} {translated_headline}",
+                    "description": translated_summary[:200] + "..." if len(translated_summary) > 200 else translated_summary,
+                    "impact": f"{impact_emoji} {impact_text}",
+                    "date": news_date,
+                    "source": "Finnhub",
+                    "original_title": original_headline,  # Mantieni originale per debug
+                    "url": item.get('url', '')
+                })
+
+            return formatted_news
+
     except Exception as e:
-        st.warning(f"Finnhub API error: {e}")
+        st.warning(f"⚠️ Errore Finnhub API: {e}")
+        # Fallback a notizie simulate
+        return get_fallback_news()
 
-    # 2. Try MarketAux (Free: 100 requests/month)
-    try:
-        # Replace with your MarketAux API key from https://marketaux.com/
-        MARKETAUX_API_KEY = "YOUR_MARKETAUX_API_KEY"  # Get free key at marketaux.com
-
-        if MARKETAUX_API_KEY != "YOUR_MARKETAUX_API_KEY" and len(news_sources) < 4:
-            url = f"https://api.marketaux.com/v1/news/all?api_token={MARKETAUX_API_KEY}&limit=4&language=en"
-            response = requests.get(url, timeout=10)
-
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get('data', []):
-                    impact_emoji = "📈" if any(word in item.get('title', '').lower() for word in ['rise', 'gain', 'up', 'bull', 'high']) else "📊"
-                    news_sources.append({
-                        "title": f"{impact_emoji} {item.get('title', 'No title')}",
-                        "description": item.get('description', 'No description available')[:200] + "...",
-                        "impact": f"{impact_emoji} Market impact",
-                        "date": datetime.fromisoformat(item.get('published_at', '')).strftime("%d %b %Y") if item.get('published_at') else "Today",
-                        "source": "MarketAux"
-                    })
-    except Exception as e:
-        st.warning(f"MarketAux API error: {e}")
-
-    # 3. Try Alpha Vantage News
-    try:
-        # Replace with your Alpha Vantage API key from https://www.alphavantage.co/support/#api-key
-        ALPHA_VANTAGE_API_KEY = "YOUR_ALPHA_VANTAGE_API_KEY"  # Get free key at alphavantage.co
-
-        if ALPHA_VANTAGE_API_KEY != "YOUR_ALPHA_VANTAGE_API_KEY" and len(news_sources) < 4:
-            url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&apikey={ALPHA_VANTAGE_API_KEY}"
-            response = requests.get(url, timeout=10)
-
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get('feed', [])[:3]:
-                    sentiment = item.get('overall_sentiment_label', 'Neutral')
-                    sentiment_emoji = "📈" if sentiment == "Bullish" else "📉" if sentiment == "Bearish" else "📊"
-
-                    news_sources.append({
-                        "title": f"{sentiment_emoji} {item.get('title', 'No title')}",
-                        "description": item.get('summary', 'No description available')[:200] + "...",
-                        "impact": f"{sentiment_emoji} Sentiment: {sentiment}",
-                        "date": item.get('time_published', '')[:8] if item.get('time_published') else "Today",
-                        "source": "Alpha Vantage"
-                    })
-    except Exception as e:
-        st.warning(f"Alpha Vantage API error: {e}")
-
-    # 4. Fallback - Simulated current market news if APIs fail
-    if len(news_sources) == 0:
-        current_date = datetime.now()
-        news_sources = [
-            {
-                "title": "📈 Mercati in Rally dopo Dati Economici Positivi",
-                "description": "I principali indici azionari registrano guadagni significativi dopo la pubblicazione di dati economici migliori del previsto.",
-                "impact": "📈 Positive per mercati equity",
-                "date": current_date.strftime("%d %b %Y"),
-                "source": "Market Analysis"
-            },
-            {
-                "title": "🏦 Banche Centrali Mantengono Posizione Accomodante",
-                "description": "Le principali banche centrali segnalano l'intenzione di mantenere politiche monetarie supportive per sostenere la crescita economica.",
-                "impact": "📈 Settori sensibili ai tassi beneficiano",
-                "date": current_date.strftime("%d %b %Y"),
-                "source": "Central Bank Watch"
-            },
-            {
-                "title": "💼 Settore Tech Leader nelle Performance",
-                "description": "I titoli tecnologici guidano i guadagni di mercato grazie agli investimenti in AI e innovazione digitale.",
-                "impact": "📈 Technology sector outperformance",
-                "date": current_date.strftime("%d %b %Y"),
-                "source": "Sector Analysis"
-            },
-            {
-                "title": "🌍 Dati Globali Supportano Sentiment Risk-On",
-                "description": "I dati economici globali mostrano resilienza, supportando l'appetito per il rischio degli investitori.",
-                "impact": "📈 Broad market positive",
-                "date": current_date.strftime("%d %b %Y"),
-                "source": "Global Markets"
-            }
-        ]
-
-    return news_sources
-
-def fetch_market_news():
-    """Main function to fetch market news with error handling"""
-    try:
-        with st.spinner("📰 Scarico le ultime notizie di mercato..."):
-            news = fetch_market_news_api()
-            return news[:8]  # Limit to 8 news items
-    except Exception as e:
-        st.error(f"❌ Errore nel recupero notizie: {e}")
-        return []
+def get_fallback_news():
+    """Notizie simulate di fallback"""
+    current_date = datetime.now()
+    return [
+        {
+            "title": "📈 Mercati Azionari in Rialzo dopo Dati Economici Positivi",
+            "description": "I principali indici registrano guadagni significativi dopo la pubblicazione di dati economici migliori del previsto.",
+            "impact": "📈 Positivo per mercati equity",
+            "date": current_date.strftime("%d %b %Y"),
+            "source": "Market Analysis",
+            "url": ""
+        },
+        {
+            "title": "🏦 Federal Reserve Mantiene Politica Monetaria Accomodante",
+            "description": "La banca centrale americana conferma l'intenzione di supportare la crescita economica con politiche espansive.",
+            "impact": "📈 Positivo per settori sensibili ai tassi",
+            "date": current_date.strftime("%d %b %Y"),
+            "source": "Fed Watch",
+            "url": ""
+        },
+        {
+            "title": "💼 Settore Tecnologico Guida i Guadagni di Mercato",
+            "description": "I titoli tech continuano a performare bene grazie agli investimenti in intelligenza artificiale.",
+            "impact": "📈 Technology sector outperformance",
+            "date": current_date.strftime("%d %b %Y"),
+            "source": "Sector Analysis",
+            "url": ""
+        },
+        {
+            "title": "🌍 Dati Globali Supportano Sentiment Positivo",
+            "description": "I dati economici internazionali mostrano resilienza, sostenendo l'ottimismo degli investitori.",
+            "impact": "📈 Mercati globali positivi",
+            "date": current_date.strftime("%d %b %Y"),
+            "source": "Global Markets",
+            "url": ""
+        }
+    ]
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_screener_data():
@@ -426,20 +529,20 @@ def get_top_5_investment_picks(df):
 st.title("📈 Financial Screener Dashboard")
 st.markdown("Analizza le migliori opportunità di investimento con criteri tecnici avanzati e algoritmo di scoring intelligente")
 
-# API Keys Configuration Section (Collapsible)
-with st.expander("🔑 Configurazione API Keys (Opzionale - per notizie live)", expanded=False):
-    st.markdown("""
-    **Per ottenere notizie di mercato in tempo reale, configura una o più API keys:**
-
-    1. **Finnhub** (Gratuita - 60 calls/min): [Ottieni key](https://finnhub.io/)
-    2. **MarketAux** (100 requests/mese): [Ottieni key](https://marketaux.com/)
-    3. **Alpha Vantage** (500 requests/giorno): [Ottieni key](https://www.alphavantage.co/support/#api-key)
-
-    **Istruzioni:**
-    - Modifica il file `streamlit_app.py`
-    - Sostituisci `"YOUR_API_KEY"` con le tue chiavi reali
-    - Senza API keys, verranno mostrate notizie simulate
-    """)
+# Finnhub Status Indicator
+with st.expander("🔑 Stato API Finnhub", expanded=False):
+    try:
+        client = get_finnhub_client()
+        # Test API connection
+        test_quote = client.quote('AAPL')
+        if test_quote.get('c'):  # Check if current price exists
+            st.success("✅ Connessione Finnhub attiva - Notizie live disponibili")
+            st.info(f"💡 API Key configurata: d38fnb9r01q...np0")
+        else:
+            st.warning("⚠️ Connessione Finnhub limitata - Usando notizie simulate")
+    except Exception as e:
+        st.error(f"❌ Errore Finnhub: {e}")
+        st.info("📰 Verranno mostrate notizie simulate")
 
 st.markdown("---")
 
@@ -454,13 +557,14 @@ with col1:
         if not new_data.empty:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
-            # Fetch fresh market news
-            st.session_state.market_news = fetch_market_news()
+            # Fetch fresh market news from Finnhub
+            st.session_state.market_news = fetch_finnhub_market_news()
             st.session_state.last_update = datetime.now()
 
             # Success message with news status
-            news_status = f"📰 {len(st.session_state.market_news)} notizie aggiornate" if st.session_state.market_news else "📰 Notizie simulate (configura API keys)"
-            st.success(f"✅ Dati aggiornati! Trovati {len(new_data)} titoli | {news_status}")
+            news_count = len(st.session_state.market_news)
+            news_source = "Finnhub" if any("Finnhub" in news.get('source', '') for news in st.session_state.market_news) else "Simulate"
+            st.success(f"✅ Dati aggiornati! Trovati {len(new_data)} titoli | 📰 {news_count} notizie da {news_source}")
         else:
             st.warning("⚠️ Nessun dato trovato")
 
@@ -731,11 +835,14 @@ if not st.session_state.data.empty:
             use_container_width=True
         )
 
-# DYNAMIC MARKET NEWS SECTION
+# SEZIONE NOTIZIE FINNHUB - DINAMICA E TRADOTTA
 if st.session_state.market_news:
     st.markdown("---")
     st.subheader("📰 Notizie di Mercato - Driver della Settimana")
-    st.markdown("*Aggiornate automaticamente ad ogni refresh dei dati*")
+
+    # Status delle notizie
+    news_source = "live da Finnhub" if any("Finnhub" in news.get('source', '') for news in st.session_state.market_news) else "simulate"
+    st.markdown(f"*Aggiornate automaticamente ad ogni refresh - Fonte: {news_source}*")
 
     # Display news in a grid layout
     col1, col2 = st.columns(2)
@@ -747,16 +854,27 @@ if st.session_state.market_news:
                 st.markdown(f"*{news['date']} - {news['source']}*")
                 st.markdown(news['description'])
                 st.markdown(f"**Impatto:** {news['impact']}")
+
+                # Mostra link se disponibile (solo per notizie Finnhub)
+                if news.get('url') and news['source'] == 'Finnhub':
+                    st.markdown(f"[📖 Leggi l'articolo completo]({news['url']})")
+
                 st.markdown("---")
 
-    # Summary with API status
+    # Summary con status API
     current_date = datetime.now()
-    api_status = "live da API" if any("API" not in news['source'] for news in st.session_state.market_news) else "simulate (configura API keys per news live)"
+    if any("Finnhub" in news.get('source', '') for news in st.session_state.market_news):
+        st.success(f"""
+        🔔 **Notizie Live da Finnhub** - Aggiornamento del {current_date.strftime('%d/%m/%Y %H:%M')}
 
-    st.info(f"""
-    🔔 **Aggiornamento del {current_date.strftime('%d/%m/%Y')}**: Notizie {api_status}. 
-    Per ottenere notizie in tempo reale, configura le API keys nella sezione espandibile sopra.
-    """)
+        ✅ Connessione API attiva | 🌐 Traduzione automatica in italiano | 📊 Analisi sentiment integrata
+        """)
+    else:
+        st.info(f"""
+        🔔 **Notizie Simulate** - Aggiornamento del {current_date.strftime('%d/%m/%Y')}
+
+        ⚠️ API Finnhub non disponibile - Vengono mostrate notizie simulate per scopi dimostrativi
+        """)
 
 else:
     # Welcome message
@@ -771,7 +889,7 @@ else:
     - **📈 Link TradingView**: Accesso diretto ai grafici di ogni titolo
     - **🧮 Investment Score**: Punteggio da 0-100 basato su analisi multi-fattoriale
     - **📊 Performance Settoriale**: Analisi delle performance settimanali per settore
-    - **📰 News di Mercato**: Driver chiave aggiornati automaticamente (configura API keys)
+    - **📰 News Finnhub**: Notizie live tradotte automaticamente in italiano
 
     ### 📊 Algoritmo di Scoring:
 
@@ -783,14 +901,14 @@ else:
     - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
     - **Market Cap** (10%): Dimensione aziendale ottimale
 
-    ### 🔑 Configurazione API (Opzionale):
+    ### 📰 Integrazione Finnhub:
 
-    Per notizie live, configura una o più API keys gratuite:
-    - **Finnhub**: 60 calls/minuto gratuite
-    - **MarketAux**: 100 requests/mese gratuite  
-    - **Alpha Vantage**: 500 requests/giorno gratuite
+    - **Notizie live** direttamente da Finnhub API
+    - **Traduzione automatica** in italiano
+    - **Analisi sentiment** per determinare l'impatto sul mercato
+    - **Link agli articoli** completi per approfondimenti
 
-    **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
+    **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi e vedere le notizie live!**
     """)
 
 # --- SIDEBAR INFO ---
@@ -802,7 +920,7 @@ st.sidebar.markdown("""
 - **🧮 Investment Score**: Punteggio intelligente 0-100
 - **📈 Link TradingView**: Accesso diretto ai grafici
 - **📊 Performance Settori**: Analisi settimanale
-- **📰 Market News**: Driver di mercato (live con API keys)
+- **📰 Finnhub News**: Notizie live tradotte in italiano
 
 ### 🔬 Come Funziona lo Scoring:
 
@@ -830,18 +948,18 @@ L'algoritmo valuta ogni azione su 6 parametri:
 - **60-69**: Discreta
 - **<60**: Da valutare attentamente
 
+### 📰 Notizie Finnhub:
+
+- **API attiva**: Notizie live dal mercato
+- **Traduzione**: Automatica in italiano
+- **Sentiment**: Analisi impatto mercato
+- **Fallback**: Notizie simulate se API non disponibile
+
 ### 🔄 Aggiornamenti:
 
 Dati e notizie aggiornati in tempo reale. 
 L'algoritmo ricalcola automaticamente tutti i punteggi.
-
-### 📰 News API Providers:
-
-- **Finnhub**: News e sentiment analysis
-- **MarketAux**: Global market news
-- **Alpha Vantage**: News with sentiment scores
-- **Fallback**: Notizie simulate se API non disponibili
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView API + News APIs**")
+st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Finnhub APIs**")
