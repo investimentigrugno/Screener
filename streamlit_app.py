@@ -217,7 +217,7 @@ def fetch_market_news_api() -> List[Dict]:
     # 1. Try Finnhub (Free tier: 60 calls/minute)
     try:
         # Replace with your Finnhub API key from https://finnhub.io/
-        FINNHUB_API_KEY = "YOUR_FINNHUB_API_KEY"  # Get free key at finnhub.io
+        FINNHUB_API_KEY = "d38fnb9r01qlbdj59nq0"  # Get free key at finnhub.io
 
         if FINNHUB_API_KEY != "YOUR_FINNHUB_API_KEY":
             url = f"https://finnhub.io/api/v1/news?category=general&token={FINNHUB_API_KEY}"
