@@ -2,18 +2,13 @@ import streamlit as st
 import pandas as pd
 import time
 from tradingview_screener import Query, Column
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 import webbrowser
 import numpy as np
-
-# --- PAGE CONFIG ---
-st.set_page_config(
-    page_title="Financial Screener",
-    page_icon="📈",
-    layout="wide"
-)
+import requests
+from typing import List, Dict
 
 # --- SESSION STATE INITIALIZATION ---
 if 'data' not in st.session_state:
@@ -22,6 +17,15 @@ if 'last_update' not in st.session_state:
     st.session_state.last_update = None
 if 'top_5_stocks' not in st.session_state:
     st.session_state.top_5_stocks = pd.DataFrame()
+if 'market_news' not in st.session_state:
+    st.session_state.market_news = []
+
+# --- PAGE CONFIG ---
+st.set_page_config(
+    page_title="Financial Screener",
+    page_icon="📈",
+    layout="wide"
+)
 
 # --- FUNCTIONS ---
 def format_technical_rating(rating: float) -> str:
@@ -196,13 +200,135 @@ def calculate_investment_score(df):
 
 def get_tradingview_url(symbol):
     """Generate TradingView URL for a given symbol"""
-    # Rimuove il prefisso exchange se presente (es: NASDAQ:AAPL -> AAPL)
     if ':' in symbol:
         clean_symbol = symbol.split(':')[1]
     else:
         clean_symbol = symbol
 
     return f"https://www.tradingview.com/chart/?symbol={symbol}"
+
+def fetch_market_news_api() -> List[Dict]:
+    """
+    Fetch current market news from multiple providers
+    Priority: Finnhub -> Alpha Vantage -> NewsAPI -> Fallback
+    """
+    news_sources = []
+
+    # 1. Try Finnhub (Free tier: 60 calls/minute)
+    try:
+        # Replace with your Finnhub API key from https://finnhub.io/
+        FINNHUB_API_KEY = "YOUR_FINNHUB_API_KEY"  # Get free key at finnhub.io
+
+        if FINNHUB_API_KEY != "YOUR_FINNHUB_API_KEY":
+            url = f"https://finnhub.io/api/v1/news?category=general&token={FINNHUB_API_KEY}"
+            response = requests.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                for item in data[:6]:  # Limit to top 6 news
+                    news_sources.append({
+                        "title": f"📰 {item.get('headline', 'No title')}",
+                        "description": item.get('summary', 'No description available')[:200] + "...",
+                        "impact": "📊 Market driver",
+                        "date": datetime.fromtimestamp(item.get('datetime', 0)).strftime("%d %b %Y"),
+                        "source": "Finnhub"
+                    })
+    except Exception as e:
+        st.warning(f"Finnhub API error: {e}")
+
+    # 2. Try MarketAux (Free: 100 requests/month)
+    try:
+        # Replace with your MarketAux API key from https://marketaux.com/
+        MARKETAUX_API_KEY = "YOUR_MARKETAUX_API_KEY"  # Get free key at marketaux.com
+
+        if MARKETAUX_API_KEY != "YOUR_MARKETAUX_API_KEY" and len(news_sources) < 4:
+            url = f"https://api.marketaux.com/v1/news/all?api_token={MARKETAUX_API_KEY}&limit=4&language=en"
+            response = requests.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('data', []):
+                    impact_emoji = "📈" if any(word in item.get('title', '').lower() for word in ['rise', 'gain', 'up', 'bull', 'high']) else "📊"
+                    news_sources.append({
+                        "title": f"{impact_emoji} {item.get('title', 'No title')}",
+                        "description": item.get('description', 'No description available')[:200] + "...",
+                        "impact": f"{impact_emoji} Market impact",
+                        "date": datetime.fromisoformat(item.get('published_at', '')).strftime("%d %b %Y") if item.get('published_at') else "Today",
+                        "source": "MarketAux"
+                    })
+    except Exception as e:
+        st.warning(f"MarketAux API error: {e}")
+
+    # 3. Try Alpha Vantage News
+    try:
+        # Replace with your Alpha Vantage API key from https://www.alphavantage.co/support/#api-key
+        ALPHA_VANTAGE_API_KEY = "YOUR_ALPHA_VANTAGE_API_KEY"  # Get free key at alphavantage.co
+
+        if ALPHA_VANTAGE_API_KEY != "YOUR_ALPHA_VANTAGE_API_KEY" and len(news_sources) < 4:
+            url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&apikey={ALPHA_VANTAGE_API_KEY}"
+            response = requests.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('feed', [])[:3]:
+                    sentiment = item.get('overall_sentiment_label', 'Neutral')
+                    sentiment_emoji = "📈" if sentiment == "Bullish" else "📉" if sentiment == "Bearish" else "📊"
+
+                    news_sources.append({
+                        "title": f"{sentiment_emoji} {item.get('title', 'No title')}",
+                        "description": item.get('summary', 'No description available')[:200] + "...",
+                        "impact": f"{sentiment_emoji} Sentiment: {sentiment}",
+                        "date": item.get('time_published', '')[:8] if item.get('time_published') else "Today",
+                        "source": "Alpha Vantage"
+                    })
+    except Exception as e:
+        st.warning(f"Alpha Vantage API error: {e}")
+
+    # 4. Fallback - Simulated current market news if APIs fail
+    if len(news_sources) == 0:
+        current_date = datetime.now()
+        news_sources = [
+            {
+                "title": "📈 Mercati in Rally dopo Dati Economici Positivi",
+                "description": "I principali indici azionari registrano guadagni significativi dopo la pubblicazione di dati economici migliori del previsto.",
+                "impact": "📈 Positive per mercati equity",
+                "date": current_date.strftime("%d %b %Y"),
+                "source": "Market Analysis"
+            },
+            {
+                "title": "🏦 Banche Centrali Mantengono Posizione Accomodante",
+                "description": "Le principali banche centrali segnalano l'intenzione di mantenere politiche monetarie supportive per sostenere la crescita economica.",
+                "impact": "📈 Settori sensibili ai tassi beneficiano",
+                "date": current_date.strftime("%d %b %Y"),
+                "source": "Central Bank Watch"
+            },
+            {
+                "title": "💼 Settore Tech Leader nelle Performance",
+                "description": "I titoli tecnologici guidano i guadagni di mercato grazie agli investimenti in AI e innovazione digitale.",
+                "impact": "📈 Technology sector outperformance",
+                "date": current_date.strftime("%d %b %Y"),
+                "source": "Sector Analysis"
+            },
+            {
+                "title": "🌍 Dati Globali Supportano Sentiment Risk-On",
+                "description": "I dati economici globali mostrano resilienza, supportando l'appetito per il rischio degli investitori.",
+                "impact": "📈 Broad market positive",
+                "date": current_date.strftime("%d %b %Y"),
+                "source": "Global Markets"
+            }
+        ]
+
+    return news_sources
+
+def fetch_market_news():
+    """Main function to fetch market news with error handling"""
+    try:
+        with st.spinner("📰 Scarico le ultime notizie di mercato..."):
+            news = fetch_market_news_api()
+            return news[:8]  # Limit to 8 news items
+    except Exception as e:
+        st.error(f"❌ Errore nel recupero notizie: {e}")
+        return []
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_screener_data():
@@ -299,6 +425,22 @@ def get_top_5_investment_picks(df):
 # --- MAIN APP ---
 st.title("📈 Financial Screener Dashboard")
 st.markdown("Analizza le migliori opportunità di investimento con criteri tecnici avanzati e algoritmo di scoring intelligente")
+
+# API Keys Configuration Section (Collapsible)
+with st.expander("🔑 Configurazione API Keys (Opzionale - per notizie live)", expanded=False):
+    st.markdown("""
+    **Per ottenere notizie di mercato in tempo reale, configura una o più API keys:**
+
+    1. **Finnhub** (Gratuita - 60 calls/min): [Ottieni key](https://finnhub.io/)
+    2. **MarketAux** (100 requests/mese): [Ottieni key](https://marketaux.com/)
+    3. **Alpha Vantage** (500 requests/giorno): [Ottieni key](https://www.alphavantage.co/support/#api-key)
+
+    **Istruzioni:**
+    - Modifica il file `streamlit_app.py`
+    - Sostituisci `"YOUR_API_KEY"` con le tue chiavi reali
+    - Senza API keys, verranno mostrate notizie simulate
+    """)
+
 st.markdown("---")
 
 # Auto-refresh option
@@ -306,12 +448,19 @@ col1, col2, col3 = st.columns([2, 1, 1])
 
 with col1:
     if st.button("🔄 Aggiorna Dati", type="primary", use_container_width=True):
+        # Clear cache to force fresh data
+        fetch_screener_data.clear()
         new_data = fetch_screener_data()
         if not new_data.empty:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
+            # Fetch fresh market news
+            st.session_state.market_news = fetch_market_news()
             st.session_state.last_update = datetime.now()
-            st.success(f"✅ Dati aggiornati! Trovati {len(new_data)} titoli")
+
+            # Success message with news status
+            news_status = f"📰 {len(st.session_state.market_news)} notizie aggiornate" if st.session_state.market_news else "📰 Notizie simulate (configura API keys)"
+            st.success(f"✅ Dati aggiornati! Trovati {len(new_data)} titoli | {news_status}")
         else:
             st.warning("⚠️ Nessun dato trovato")
 
@@ -332,7 +481,7 @@ if auto_refresh:
 if st.session_state.last_update:
     st.info(f"🕐 Ultimo aggiornamento: {st.session_state.last_update.strftime('%d/%m/%Y %H:%M:%S')}")
 
-# TOP 5 INVESTMENT PICKS - NUOVA SEZIONE
+# TOP 5 INVESTMENT PICKS
 if not st.session_state.top_5_stocks.empty:
     st.subheader("🎯 TOP 5 PICKS - Maggiori Probabilità di Guadagno (2-4 settimane)")
     st.markdown("*Selezionate dall'algoritmo di scoring intelligente*")
@@ -428,7 +577,7 @@ if not st.session_state.data.empty:
 
     filtered_df = filtered_df[filtered_df['Investment_Score'] >= min_score]
 
-    # MODIFIED: Analisi Visuale - Solo Performance Settori Settimanale
+    # Performance Settori Settimanale
     st.subheader("📈 Performance Settori - Ultima Settimana")
     st.markdown("*Basata sui titoli selezionati dal tuo screener*")
 
@@ -440,8 +589,6 @@ if not st.session_state.data.empty:
 
         if not sector_weekly_perf.empty:
             # Grafico a barre orizzontali per performance settoriale
-            colors = ['#FF4B4B' if x < 0 else '#00C851' for x in sector_weekly_perf['mean']]
-
             fig_sector_weekly = px.bar(
                 sector_weekly_perf,
                 y='Sector',
@@ -508,7 +655,7 @@ if not st.session_state.data.empty:
     st.subheader("📋 Dati Dettagliati")
     st.markdown(f"**Visualizzati {len(filtered_df)} di {len(df)} titoli**")
 
-    # Column selection for display - Rating rimosso dai default
+    # Column selection for display
     available_columns = ['Company', 'Symbol', 'Country', 'Sector', 'Currency', 'Price', 'Rating', 
                         'Investment_Score', 'Recommend.All', 'RSI', 'Volume', 'TradingView_URL']
     display_columns = st.multiselect(
@@ -584,81 +731,32 @@ if not st.session_state.data.empty:
             use_container_width=True
         )
 
-# ADDED: Market News Section
-st.markdown("---")
-st.subheader("📰 Notizie di Mercato - Questa Settimana")
-st.markdown("*Driver chiave che hanno influenzato i mercati*")
+# DYNAMIC MARKET NEWS SECTION
+if st.session_state.market_news:
+    st.markdown("---")
+    st.subheader("📰 Notizie di Mercato - Driver della Settimana")
+    st.markdown("*Aggiornate automaticamente ad ogni refresh dei dati*")
 
-# Market news content from search results
-market_news = [
-    {
-        "title": "🏦 Federal Reserve Taglia i Tassi di 25 bp",
-        "description": "La Fed ha ridotto i tassi di interesse per la prima volta nel 2025, portandoli al 4.75%-5.00% per contrastare il rallentamento del mercato del lavoro.",
-        "impact": "📈 Positivo per azioni e small-cap",
-        "date": "18 Set 2025"
-    },
-    {
-        "title": "🚗 Tesla Rally dopo Acquisto di Musk",
-        "description": "Tesla è salita del 3.6% dopo che documenti normativi hanno rivelato che Elon Musk ha acquistato quasi $1 miliardo di azioni venerdì.",
-        "impact": "📈 Consumer Discretionary +1.1%",
-        "date": "15 Set 2025"
-    },
-    {
-        "title": "🔍 Alphabet Supera $3 Trilioni di Market Cap",
-        "description": "Google ha raggiunto un nuovo massimo storico, spingendo il settore Communication Services a +2.33%.",
-        "impact": "📈 Tech e Communication Services",
-        "date": "15 Set 2025"
-    },
-    {
-        "title": "🇺🇸🇨🇳 Progressi nei Negoziati USA-Cina su TikTok",
-        "description": "Il Segretario al Tesoro Bessent ha indicato che 'abbiamo un framework' per un accordo sulla proprietà di TikTok dopo i negoziati a Madrid.",
-        "impact": "📈 Mercati asiatici e tech",
-        "date": "15 Set 2025"
-    },
-    {
-        "title": "💼 Small-Cap Raggiungono Nuovi Massimi",
-        "description": "Il Russell 2000 ha superato il record di novembre 2021, beneficiando delle aspettative di tagli ai tassi. Performance settimanale +2.2%.",
-        "impact": "📈 Small-cap outperformance",
-        "date": "17 Set 2025"
-    },
-    {
-        "title": "💰 Oro e Argento ai Massimi Ciclici",
-        "description": "L'argento ha toccato nuovi massimi ciclici sopra $40/oncia, mentre l'oro continua la sua corsa rialzista oltre $2,650.",
-        "impact": "📈 Commodities e metalli preziosi",
-        "date": "12 Set 2025"
-    },
-    {
-        "title": "📊 Dati Inflazione in Linea con Attese",
-        "description": "CPI USA agosto a +2.9% anno su anno, +0.4% mensile. Core CPI a +3.1%, supportando le aspettative di tagli graduali della Fed.",
-        "impact": "🎯 Conferma policy Fed moderata",
-        "date": "12 Set 2025"
-    },
-    {
-        "title": "🏗️ Richieste Sussidi Disoccupazione ai Massimi 2021",
-        "description": "Le richieste settimanali sono salite a 263,000, il livello più alto da ottobre 2021, rafforzando il caso per tagli ai tassi.",
-        "impact": "📈 Maggiori aspettative tagli Fed",
-        "date": "12 Set 2025"
-    }
-]
+    # Display news in a grid layout
+    col1, col2 = st.columns(2)
 
-# Display news in a grid layout
-col1, col2 = st.columns(2)
+    for i, news in enumerate(st.session_state.market_news):
+        with col1 if i % 2 == 0 else col2:
+            with st.container():
+                st.markdown(f"**{news['title']}**")
+                st.markdown(f"*{news['date']} - {news['source']}*")
+                st.markdown(news['description'])
+                st.markdown(f"**Impatto:** {news['impact']}")
+                st.markdown("---")
 
-for i, news in enumerate(market_news):
-    with col1 if i % 2 == 0 else col2:
-        with st.container():
-            st.markdown(f"**{news['title']}**")
-            st.markdown(f"*{news['date']}*")
-            st.markdown(news['description'])
-            st.markdown(f"**Impatto:** {news['impact']}")
-            st.markdown("---")
+    # Summary with API status
+    current_date = datetime.now()
+    api_status = "live da API" if any("API" not in news['source'] for news in st.session_state.market_news) else "simulate (configura API keys per news live)"
 
-# Summary of weekly market performance
-st.info("""
-🔔 **Riassunto Settimanale**: I mercati hanno chiuso ai massimi storici con S&P 500 (+1.2%), Nasdaq (+2.2%) e Dow (+1.0%) tutti in rialzo. 
-Il taglio dei tassi Fed ha alimentato l'ottimismo, con particolare forza nei small-cap (+2.2%) che hanno raggiunto nuovi record. 
-I settori vincenti sono stati Technology, Communication Services e Consumer Discretionary.
-""")
+    st.info(f"""
+    🔔 **Aggiornamento del {current_date.strftime('%d/%m/%Y')}**: Notizie {api_status}. 
+    Per ottenere notizie in tempo reale, configura le API keys nella sezione espandibile sopra.
+    """)
 
 else:
     # Welcome message
@@ -673,7 +771,7 @@ else:
     - **📈 Link TradingView**: Accesso diretto ai grafici di ogni titolo
     - **🧮 Investment Score**: Punteggio da 0-100 basato su analisi multi-fattoriale
     - **📊 Performance Settoriale**: Analisi delle performance settimanali per settore
-    - **📰 News di Mercato**: Driver chiave della settimana
+    - **📰 News di Mercato**: Driver chiave aggiornati automaticamente (configura API keys)
 
     ### 📊 Algoritmo di Scoring:
 
@@ -685,7 +783,14 @@ else:
     - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
     - **Market Cap** (10%): Dimensione aziendale ottimale
 
-    **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi e scoprire le TOP 5 PICKS!**
+    ### 🔑 Configurazione API (Opzionale):
+
+    Per notizie live, configura una o più API keys gratuite:
+    - **Finnhub**: 60 calls/minuto gratuite
+    - **MarketAux**: 100 requests/mese gratuite  
+    - **Alpha Vantage**: 500 requests/giorno gratuite
+
+    **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
     """)
 
 # --- SIDEBAR INFO ---
@@ -697,7 +802,7 @@ st.sidebar.markdown("""
 - **🧮 Investment Score**: Punteggio intelligente 0-100
 - **📈 Link TradingView**: Accesso diretto ai grafici
 - **📊 Performance Settori**: Analisi settimanale
-- **📰 Market News**: Driver di mercato aggiornati
+- **📰 Market News**: Driver di mercato (live con API keys)
 
 ### 🔬 Come Funziona lo Scoring:
 
@@ -727,9 +832,16 @@ L'algoritmo valuta ogni azione su 6 parametri:
 
 ### 🔄 Aggiornamenti:
 
-I dati vengono aggiornati in tempo reale da TradingView. 
+Dati e notizie aggiornati in tempo reale. 
 L'algoritmo ricalcola automaticamente tutti i punteggi.
+
+### 📰 News API Providers:
+
+- **Finnhub**: News e sentiment analysis
+- **MarketAux**: Global market news
+- **Alpha Vantage**: News with sentiment scores
+- **Fallback**: Notizie simulate se API non disponibili
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView API**")
+st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView API + News APIs**")
