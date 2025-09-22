@@ -727,14 +727,12 @@ if not st.session_state.data.empty:
             use_container_width=True
         )
 
-# SEZIONE NOTIZIE PROFESSIONALI ITALIANE
+# SEZIONE NOTIZIE PROFESSIONALI ITALIANE (PULITA)
 if st.session_state.market_news:
     st.markdown("---")
-    st.subheader("📰 Notizie di Mercato - Analisi Professionali")
+    st.subheader("📰 Notizie di Mercato")
 
-    st.markdown(f"*📊 {len(st.session_state.market_news)} analisi native scritte da esperti finanziari italiani*")
-
-    # Display news
+    # Display news (senza diciture extra)
     col1, col2 = st.columns(2)
 
     for i, news in enumerate(st.session_state.market_news):
@@ -745,7 +743,7 @@ if st.session_state.market_news:
                 st.markdown(news['description'])
                 st.markdown(f"**Impatto:** {news['impact']}")
 
-                # Category badge
+                # Solo category badge (manteniamo)
                 if news.get('category'):
                     category_names = {
                         "market_rally": "🚀 Rally di mercato",
@@ -759,15 +757,15 @@ if st.session_state.market_news:
                     category_display = category_names.get(news['category'], news['category'])
                     st.caption(f"🏷️ {category_display}")
 
-                st.caption("🇮🇹 Contenuto professionale italiano")
+                # RIMOSSE: le diciture "analisi professionale nativa"
                 st.markdown("---")
 
-    # Professional summary
+    # Summary pulito (senza conteggi traduzioni)
     current_date = datetime.now()
     st.success(f"""
-    🎯 **Sistema Notizie Professionali Attivo** - {current_date.strftime('%d/%m/%Y %H:%M')}
+    🎯 **Notizie di Mercato Aggiornate** - {current_date.strftime('%d/%m/%Y %H:%M')}
 
-    ✅ Solo contenuti nativi italiani | 📝 Scritti da esperti finanziari | 🏷️ Categorizzazione automatica | 🇮🇹 Linguaggio tecnico professionale | 📚 Pool di 15+ template rotativi
+    ✅ Contenuti professionali di qualità | 🏷️ Categorizzazione per settore | 📊 Analisi di impatto sui mercati | 🔄 Aggiornamento automatico
     """)
 
 else:
@@ -775,7 +773,7 @@ else:
     st.markdown("""
     ## 🚀 Benvenuto nel Financial Screener Professionale!
 
-    Questa app utilizza un **algoritmo di scoring intelligente** e **notizie professionali native italiane**.
+    Questa app utilizza un **algoritmo di scoring intelligente** e **notizie professionali di mercato**.
 
     ### 🎯 Funzionalità Principali:
 
@@ -783,25 +781,26 @@ else:
     - **📈 Link TradingView**: Accesso diretto ai grafici professionali
     - **🧮 Investment Score**: Punteggio 0-100 con analisi multi-fattoriale
     - **📊 Performance Settoriale**: Dashboard completa per settori
-    - **📰 Notizie Professionali**: Solo contenuti nativi italiani di alta qualità
+    - **📰 Notizie di Mercato**: Analisi e aggiornamenti finanziari
 
-    ### 🇮🇹 Sistema Notizie Professionali:
+    ### 📊 Sistema di Scoring:
 
-    - **📚 15+ Template Nativi**: Scritti direttamente in italiano da esperti
-    - **🎯 7 Categorie Specializzate**: Rally, utili, Fed, settori, macro, globale, volatilità
-    - **🔄 Rotazione Automatica**: Contenuti sempre diversi ad ogni aggiornamento
-    - **📝 Linguaggio Tecnico**: Terminologia finanziaria italiana corretta
-    - **🏷️ Categorizzazione**: Ogni notizia è classificata per tipologia
+    Il nostro algoritmo analizza:
+    - **RSI ottimale** (20%): Momentum positivo senza ipercomprato
+    - **MACD signal** (15%): Conferma del trend rialzista  
+    - **Trend analysis** (25%): Prezzo vs medie mobili
+    - **Technical rating** (20%): Raccomandazioni tecniche aggregate
+    - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
+    - **Market Cap** (10%): Dimensione aziendale ottimale
 
-    ### 🏆 Vantaggi:
+    ### 📰 Notizie di Mercato:
 
-    - **✅ Qualità Garantita**: Nessuna traduzione automatica
-    - **📊 Sempre Pertinenti**: Contenuti specifici per il settore finanziario
-    - **🇮🇹 Italiano Perfetto**: Linguaggio naturale e fluido
-    - **📈 Aggiornamento Continuo**: Selezione casuale da pool ampio
-    - **🎯 Focus Professionale**: Analisi di mercato di livello istituzionale
+    - **🎯 7 Categorie**: Rally, utili, Fed, settori, macro, globale, volatilità
+    - **🔄 Aggiornamento**: Contenuti sempre freschi e pertinenti
+    - **📊 Analisi Impatto**: Valutazione dell'effetto sui mercati
+    - **🏷️ Categorizzazione**: Classificazione automatica per settore
 
-    **👆 Clicca su 'Aggiorna Dati' per vedere le notizie professionali italiane!**
+    **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
     """)
 
 # --- SIDEBAR ---
@@ -813,32 +812,19 @@ st.sidebar.markdown("""
 - **🧮 Investment Score**: Sistema a 6 fattori
 - **📈 TradingView**: Integrazione diretta
 - **📊 Analisi Settoriale**: Performance settimanale
-- **📰 Notizie Professionali**: Solo contenuti italiani nativi
+- **📰 Notizie di Mercato**: Aggiornamenti finanziari
 
-### 🇮🇹 Sistema Notizie:
+### 📊 Investment Score:
 
-**📚 Pool Professionale:**
-- 15+ notizie scritte da esperti italiani
-- 7 categorie finanziarie specializzate
-- Linguaggio tecnico appropriato
-- Terminologia italiana corretta
+L'algoritmo valuta ogni azione su 6 parametri:
+1. **RSI Score**: Momentum ottimale
+2. **MACD Score**: Segnale di trend
+3. **Trend Score**: Analisi medie mobili
+4. **Technical Rating**: Raccomandazioni aggregate  
+5. **Volatility Score**: Movimento controllato
+6. **Market Cap Score**: Dimensione ideale
 
-**🔄 Funzionamento:**
-- Selezione casuale da pool ampio
-- Rotazione automatica contenuti
-- Nessuna traduzione automatica
-- Quality control garantito
-
-**🏷️ Categorie Coperte:**
-- 📈 Rally e movimenti positivi
-- 📊 Risultati aziendali e earnings
-- 🏦 Politica monetaria e Fed
-- 💼 Performance per settori
-- 🌍 Dati macroeconomici
-- 🌐 Mercati internazionali
-- ⚡ Volatilità e risk management
-
-### 🎯 Investment Score:
+### 🎯 Scala di Valutazione:
 
 - **90-100**: Opportunità eccellente
 - **80-89**: Molto interessante  
@@ -846,10 +832,28 @@ st.sidebar.markdown("""
 - **60-69**: Da valutare
 - **<60**: Attenzione richiesta
 
+### 📈 Significato Rating:
+
+- **🟢 Strong Buy**: Molto positivo (≥0.5)
+- **🟢 Buy**: Positivo (≥0.1)
+- **🟡 Neutral**: Neutrale (-0.1 a 0.1)
+- **🔴 Sell**: Negativo (≤-0.1)
+- **🔴 Strong Sell**: Molto negativo (≤-0.5)
+
+### 📰 Categorie Notizie:
+
+- 📈 **Rally di mercato**: Movimenti positivi
+- 📊 **Risultati aziendali**: Earnings e guidance
+- 🏦 **Politica monetaria**: Fed e banche centrali
+- 💼 **Performance settoriali**: Analisi per industria
+- 🌍 **Dati macro**: Indicatori economici
+- 🌐 **Mercati globali**: Panorama internazionale
+- ⚡ **Volatilità**: Risk assessment
+
 ### 🔄 Aggiornamenti:
 
-Sistema automatizzato con contenuti professionali garantiti.
+Sistema automatizzato con contenuti sempre aggiornati.
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Notizie Professionali Italiane**")
+st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Finnhub**")
