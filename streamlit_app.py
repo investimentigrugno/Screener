@@ -190,7 +190,7 @@ def calculate_investment_score(df):
     # Normalizza il punteggio finale (0-100)
     max_possible_score = 10 * (0.20 + 0.15 + 0.25 + 0.20 + 0.10 + 0.10)
     scored_df['Investment_Score'] = (scored_df['Investment_Score'] / max_possible_score) * 100
-    scored_df['Investment_Score'] = scored_df['Investment_Score'].round(2)
+    scored_df['Investment_Score'] = scored_df['Investment_Score'].round(1)  # MODIFIED: Solo 1 cifra decimale
 
     return scored_df
 
@@ -352,7 +352,6 @@ if not st.session_state.top_5_stocks.empty:
                 st.markdown(f"**{stock['Company']}** ({stock['Symbol']})")
                 st.markdown(f"*{stock['Country']} | {stock['Sector']}*")
                 st.markdown(f"💰 **${stock['Price']}** ({stock['Change %']})")
-                # CORRECTED: Changed from 'Recommendation_reason' to 'Recommendation_Reason'
                 st.caption(f"📊 {stock['Recommendation_Reason']}")
 
             with col3:
@@ -362,14 +361,13 @@ if not st.session_state.top_5_stocks.empty:
                 st.markdown(f"Perf 1W: {stock['Perf Week %']} | 1M: {stock['Perf Month %']}")
 
             with col4:
-                # Link a TradingView
+                # MODIFIED: Bottone diretto al grafico TradingView
                 tv_url = stock['TradingView_URL']
-                st.markdown(f"[📈 Vedi Chart]({tv_url})")
-
-                # Bottone per aprire direttamente
-                if st.button(f"🚀 Analizza {stock['Symbol']}", key=f"analyze_{idx}"):
-                    st.balloons()
-                    st.success(f"Apri il link sopra per analizzare {stock['Symbol']} su TradingView!")
+                st.link_button(
+                    f"📈 Grafico {stock['Symbol']}", 
+                    tv_url,
+                    use_container_width=True
+                )
 
         st.markdown("---")
 
@@ -494,7 +492,7 @@ if not st.session_state.data.empty:
         )
         st.plotly_chart(fig_sector_perf, use_container_width=True)
 
-    # Top performers con link TradingView
+    # Top performers con link TradingView migliorati
     st.subheader("🏆 Top Performers")
     col1, col2 = st.columns(2)
 
@@ -504,12 +502,13 @@ if not st.session_state.data.empty:
 
         for _, row in top_score_df.iterrows():
             with st.container():
-                st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
-                col_a, col_b = st.columns([2, 1])
+                col_a, col_b = st.columns([3, 1])
                 with col_a:
+                    st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
                     st.markdown(f"{row['Rating']} | ${row['Price']}")
                 with col_b:
-                    st.markdown(f"[📈 Chart]({row['TradingView_URL']})")
+                    # MODIFIED: Bottone link diretto invece di markdown link
+                    st.link_button("📈", row['TradingView_URL'], use_container_width=True)
 
     with col2:
         st.write("**💎 Strong Buy con Alto Score**")
@@ -521,12 +520,13 @@ if not st.session_state.data.empty:
         if not strong_buy_high_score.empty:
             for _, row in strong_buy_high_score.iterrows():
                 with st.container():
-                    st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
-                    col_a, col_b = st.columns([2, 1])
+                    col_a, col_b = st.columns([3, 1])
                     with col_a:
+                        st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
                         st.markdown(f"${row['Price']}")
                     with col_b:
-                        st.markdown(f"[📈 Chart]({row['TradingView_URL']})")
+                        # MODIFIED: Bottone link diretto invece di markdown link
+                        st.link_button("📈", row['TradingView_URL'], use_container_width=True)
         else:
             st.info("Nessun Strong Buy con score ≥70 trovato")
 
@@ -534,17 +534,21 @@ if not st.session_state.data.empty:
     st.subheader("📋 Dati Dettagliati")
     st.markdown(f"**Visualizzati {len(filtered_df)} di {len(df)} titoli**")
 
-    # Column selection for display
+    # Column selection for display - MODIFIED: Rimossa Rating dalla default selection
     available_columns = ['Company', 'Symbol', 'Country', 'Sector', 'Currency', 'Price', 'Rating', 
                         'Investment_Score', 'Recommend.All', 'RSI', 'Volume', 'TradingView_URL']
     display_columns = st.multiselect(
         "Seleziona colonne da visualizzare:",
         available_columns,
-        default=['Company', 'Symbol', 'Investment_Score', 'Rating', 'Price', 'Country']
+        default=['Company', 'Symbol', 'Investment_Score', 'Price', 'Country']  # MODIFIED: Rimosso 'Rating' dai default
     )
 
     if display_columns:
         display_df = filtered_df[display_columns].copy()
+
+        # Format Investment_Score to 1 decimal place if present
+        if 'Investment_Score' in display_df.columns:
+            display_df['Investment_Score'] = display_df['Investment_Score'].round(1)
 
         # Rename columns for better display
         column_names = {
@@ -555,14 +559,23 @@ if not st.session_state.data.empty:
             'Currency': 'Valuta',
             'Price': 'Prezzo',
             'Rating': 'Rating',
-            'Investment_Score': 'Score Investimento',
+            'Investment_Score': 'Score',  # MODIFIED: Nome più corto
             'Recommend.All': 'Rating Numerico',
             'RSI': 'RSI',
             'Volume': 'Volume',
-            'TradingView_URL': 'Link TradingView'
+            'TradingView_URL': 'Chart'
         }
 
         display_df = display_df.rename(columns=column_names)
+
+        # MODIFIED: Aggiungi colonna con bottoni per TradingView se TradingView_URL è selezionata
+        if 'Chart' in display_df.columns:
+            # Converti la colonna URL in bottoni cliccabili
+            for idx, row in display_df.iterrows():
+                url = row['Chart']
+                symbol = row.get('Simbolo', 'Stock')
+                # Sostituisci l'URL con un elemento più user-friendly
+                display_df.loc[idx, 'Chart'] = f"📈 Grafico"
 
         # Style the dataframe
         def color_score(val):
@@ -585,8 +598,8 @@ if not st.session_state.data.empty:
             return ''
 
         styled_df = display_df.style
-        if 'Score Investimento' in display_df.columns:
-            styled_df = styled_df.applymap(color_score, subset=['Score Investimento'])
+        if 'Score' in display_df.columns:  # MODIFIED: Nome colonna cambiato
+            styled_df = styled_df.applymap(color_score, subset=['Score'])
         if 'Rating' in display_df.columns:
             styled_df = styled_df.applymap(color_rating, subset=['Rating'])
 
@@ -595,6 +608,10 @@ if not st.session_state.data.empty:
             use_container_width=True,
             height=400
         )
+
+        # MODIFIED: Aggiungi nota per gli utenti sui link TradingView
+        if 'Chart' in display_columns:
+            st.info("💡 Per aprire i grafici TradingView, usa i bottoni '📈 Grafico' nella sezione TOP 5 PICKS o Top Performers sopra.")
 
         # Download button
         csv = display_df.to_csv(index=False)
