@@ -190,7 +190,7 @@ def calculate_investment_score(df):
     # Normalizza il punteggio finale (0-100)
     max_possible_score = 10 * (0.20 + 0.15 + 0.25 + 0.20 + 0.10 + 0.10)
     scored_df['Investment_Score'] = (scored_df['Investment_Score'] / max_possible_score) * 100
-    scored_df['Investment_Score'] = scored_df['Investment_Score'].round(1)  # MODIFIED: Solo 1 cifra decimale
+    scored_df['Investment_Score'] = scored_df['Investment_Score'].round(1)
 
     return scored_df
 
@@ -361,7 +361,7 @@ if not st.session_state.top_5_stocks.empty:
                 st.markdown(f"Perf 1W: {stock['Perf Week %']} | 1M: {stock['Perf Month %']}")
 
             with col4:
-                # MODIFIED: Bottone diretto al grafico TradingView
+                # Bottone diretto al grafico TradingView
                 tv_url = stock['TradingView_URL']
                 st.link_button(
                     f"📈 Grafico {stock['Symbol']}", 
@@ -428,119 +428,93 @@ if not st.session_state.data.empty:
 
     filtered_df = filtered_df[filtered_df['Investment_Score'] >= min_score]
 
-    # Charts con scoring
-    st.subheader("📈 Analisi Visuale")
-    col1, col2 = st.columns(2)
+    # MODIFIED: Analisi Visuale - Solo Performance Settori Settimanale
+    st.subheader("📈 Performance Settori - Ultima Settimana")
+    st.markdown("*Basata sui titoli selezionati dal tuo screener*")
 
-    with col1:
-        # Investment Score distribution
-        fig_score = px.histogram(
-            df, x='Investment_Score', nbins=20,
-            title="Distribuzione Investment Score",
-            labels={'Investment_Score': 'Score di Investimento', 'count': 'Numero di Titoli'}
-        )
-        fig_score.add_vline(x=df['Investment_Score'].mean(), line_dash="dash", 
-                           annotation_text=f"Media: {df['Investment_Score'].mean():.1f}")
-        st.plotly_chart(fig_score, use_container_width=True)
+    # Calcola performance media per settore dalla tabella filtrata
+    if not filtered_df.empty and 'Perf.W' in filtered_df.columns:
+        sector_weekly_perf = filtered_df.groupby('Sector')['Perf.W'].agg(['mean', 'count']).reset_index()
+        sector_weekly_perf = sector_weekly_perf[sector_weekly_perf['count'] >= 2]  # Almeno 2 aziende per settore
+        sector_weekly_perf = sector_weekly_perf.sort_values('mean', ascending=True)
 
-    with col2:
-        # Rating distribution
-        rating_counts = df['Rating'].value_counts()
-        colors = ['#00FF00' if 'Buy' in rating else '#FFFF00' if 'Neutral' in rating else '#FF0000' for rating in rating_counts.index]
-        fig_rating = px.pie(
-            values=rating_counts.values,
-            names=rating_counts.index,
-            title="Distribuzione Rating Tecnici",
-            color_discrete_sequence=colors
-        )
-        fig_rating.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_rating, use_container_width=True)
+        if not sector_weekly_perf.empty:
+            # Grafico a barre orizzontali per performance settoriale
+            colors = ['#FF4B4B' if x < 0 else '#00C851' for x in sector_weekly_perf['mean']]
 
-    # Score vs Price scatter plot
-    col1, col2 = st.columns(2)
-    with col1:
-        fig_scatter = px.scatter(
-            filtered_df,
-            x='Investment_Score',
-            y='Price',
-            color='Rating',
-            size='market_cap_basic',
-            hover_data=['Company', 'Country', 'Sector'],
-            title="Investment Score vs Prezzo",
-            labels={'Investment_Score': 'Score di Investimento', 'Price': 'Prezzo'},
-            color_discrete_map={
-                '🟢 Strong Buy': '#00FF00',
-                '🟢 Buy': '#90EE90',
-                '🟡 Neutral': '#FFFF00',
-                '🔴 Sell': '#FFA500',
-                '🔴 Strong Sell': '#FF0000'
-            }
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
+            fig_sector_weekly = px.bar(
+                sector_weekly_perf,
+                y='Sector',
+                x='mean',
+                orientation='h',
+                title="Performance Settoriale - Ultima Settimana (%)",
+                labels={'mean': 'Performance Media (%)', 'Sector': 'Settore'},
+                color='mean',
+                color_continuous_scale=['red', 'yellow', 'green'],
+                text='mean'
+            )
 
-    with col2:
-        # Sector performance
-        sector_performance = df.groupby('Sector')['Investment_Score'].mean().sort_values(ascending=False).head(10)
-        fig_sector_perf = px.bar(
-            x=sector_performance.values,
-            y=sector_performance.index,
-            orientation='h',
-            title="Top 10 Settori per Score Medio",
-            labels={'x': 'Score Medio', 'y': 'Settore'},
-            color=sector_performance.values,
-            color_continuous_scale='viridis'
-        )
-        st.plotly_chart(fig_sector_perf, use_container_width=True)
+            # Personalizza il grafico
+            fig_sector_weekly.update_traces(
+                texttemplate='%{text:.1f}%',
+                textposition='outside',
+                textfont_size=10
+            )
 
-    # Top performers con link TradingView migliorati
-    st.subheader("🏆 Top Performers")
-    col1, col2 = st.columns(2)
+            fig_sector_weekly.update_layout(
+                height=max(400, len(sector_weekly_perf) * 35),
+                showlegend=False,
+                xaxis_title="Performance (%)",
+                yaxis_title="Settore",
+                font=dict(size=11)
+            )
 
-    with col1:
-        st.write("**🔥 Highest Investment Score**")
-        top_score_df = filtered_df.nlargest(5, 'Investment_Score')[['Company', 'Symbol', 'Investment_Score', 'Rating', 'Price', 'TradingView_URL']]
+            # Aggiungi linea verticale a zero
+            fig_sector_weekly.add_vline(x=0, line_dash="dash", line_color="black", line_width=1)
 
-        for _, row in top_score_df.iterrows():
-            with st.container():
-                col_a, col_b = st.columns([3, 1])
-                with col_a:
-                    st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
-                    st.markdown(f"{row['Rating']} | ${row['Price']}")
-                with col_b:
-                    # MODIFIED: Bottone link diretto invece di markdown link
-                    st.link_button("📈", row['TradingView_URL'], use_container_width=True)
+            st.plotly_chart(fig_sector_weekly, use_container_width=True)
 
-    with col2:
-        st.write("**💎 Strong Buy con Alto Score**")
-        strong_buy_high_score = filtered_df[
-            (filtered_df['Rating'] == '🟢 Strong Buy') & 
-            (filtered_df['Investment_Score'] >= 70)
-        ].nlargest(5, 'Investment_Score')[['Company', 'Symbol', 'Investment_Score', 'Price', 'TradingView_URL']]
+            # Statistiche aggiuntive
+            col1, col2, col3 = st.columns(3)
 
-        if not strong_buy_high_score.empty:
-            for _, row in strong_buy_high_score.iterrows():
-                with st.container():
-                    col_a, col_b = st.columns([3, 1])
-                    with col_a:
-                        st.markdown(f"**{row['Company']}** ({row['Symbol']}) - Score: {row['Investment_Score']:.1f}")
-                        st.markdown(f"${row['Price']}")
-                    with col_b:
-                        # MODIFIED: Bottone link diretto invece di markdown link
-                        st.link_button("📈", row['TradingView_URL'], use_container_width=True)
+            with col1:
+                best_sector = sector_weekly_perf.iloc[-1]
+                st.metric(
+                    "🥇 Miglior Settore", 
+                    best_sector['Sector'], 
+                    f"+{best_sector['mean']:.2f}%"
+                )
+
+            with col2:
+                worst_sector = sector_weekly_perf.iloc[0]
+                st.metric(
+                    "🥊 Peggior Settore", 
+                    worst_sector['Sector'], 
+                    f"{worst_sector['mean']:.2f}%"
+                )
+
+            with col3:
+                avg_performance = sector_weekly_perf['mean'].mean()
+                st.metric(
+                    "📊 Media Generale", 
+                    f"{avg_performance:.2f}%"
+                )
         else:
-            st.info("Nessun Strong Buy con score ≥70 trovato")
+            st.info("📈 Non ci sono abbastanza dati settoriali per mostrare la performance settimanale.")
+    else:
+        st.info("📈 Aggiorna i dati per vedere la performance settimanale dei settori.")
 
-    # Data table con Investment Score e link TradingView
+    # Data table con Investment Score
     st.subheader("📋 Dati Dettagliati")
     st.markdown(f"**Visualizzati {len(filtered_df)} di {len(df)} titoli**")
 
-    # Column selection for display - MODIFIED: Rimossa Rating dalla default selection
+    # Column selection for display - Rating rimosso dai default
     available_columns = ['Company', 'Symbol', 'Country', 'Sector', 'Currency', 'Price', 'Rating', 
                         'Investment_Score', 'Recommend.All', 'RSI', 'Volume', 'TradingView_URL']
     display_columns = st.multiselect(
         "Seleziona colonne da visualizzare:",
         available_columns,
-        default=['Company', 'Symbol', 'Investment_Score', 'Price', 'Country']  # MODIFIED: Rimosso 'Rating' dai default
+        default=['Company', 'Symbol', 'Investment_Score', 'Price', 'Country']
     )
 
     if display_columns:
@@ -559,7 +533,7 @@ if not st.session_state.data.empty:
             'Currency': 'Valuta',
             'Price': 'Prezzo',
             'Rating': 'Rating',
-            'Investment_Score': 'Score',  # MODIFIED: Nome più corto
+            'Investment_Score': 'Score',
             'Recommend.All': 'Rating Numerico',
             'RSI': 'RSI',
             'Volume': 'Volume',
@@ -567,15 +541,6 @@ if not st.session_state.data.empty:
         }
 
         display_df = display_df.rename(columns=column_names)
-
-        # MODIFIED: Aggiungi colonna con bottoni per TradingView se TradingView_URL è selezionata
-        if 'Chart' in display_df.columns:
-            # Converti la colonna URL in bottoni cliccabili
-            for idx, row in display_df.iterrows():
-                url = row['Chart']
-                symbol = row.get('Simbolo', 'Stock')
-                # Sostituisci l'URL con un elemento più user-friendly
-                display_df.loc[idx, 'Chart'] = f"📈 Grafico"
 
         # Style the dataframe
         def color_score(val):
@@ -598,7 +563,7 @@ if not st.session_state.data.empty:
             return ''
 
         styled_df = display_df.style
-        if 'Score' in display_df.columns:  # MODIFIED: Nome colonna cambiato
+        if 'Score' in display_df.columns:
             styled_df = styled_df.applymap(color_score, subset=['Score'])
         if 'Rating' in display_df.columns:
             styled_df = styled_df.applymap(color_rating, subset=['Rating'])
@@ -608,10 +573,6 @@ if not st.session_state.data.empty:
             use_container_width=True,
             height=400
         )
-
-        # MODIFIED: Aggiungi nota per gli utenti sui link TradingView
-        if 'Chart' in display_columns:
-            st.info("💡 Per aprire i grafici TradingView, usa i bottoni '📈 Grafico' nella sezione TOP 5 PICKS o Top Performers sopra.")
 
         # Download button
         csv = display_df.to_csv(index=False)
@@ -623,6 +584,82 @@ if not st.session_state.data.empty:
             use_container_width=True
         )
 
+# ADDED: Market News Section
+st.markdown("---")
+st.subheader("📰 Notizie di Mercato - Questa Settimana")
+st.markdown("*Driver chiave che hanno influenzato i mercati*")
+
+# Market news content from search results
+market_news = [
+    {
+        "title": "🏦 Federal Reserve Taglia i Tassi di 25 bp",
+        "description": "La Fed ha ridotto i tassi di interesse per la prima volta nel 2025, portandoli al 4.75%-5.00% per contrastare il rallentamento del mercato del lavoro.",
+        "impact": "📈 Positivo per azioni e small-cap",
+        "date": "18 Set 2025"
+    },
+    {
+        "title": "🚗 Tesla Rally dopo Acquisto di Musk",
+        "description": "Tesla è salita del 3.6% dopo che documenti normativi hanno rivelato che Elon Musk ha acquistato quasi $1 miliardo di azioni venerdì.",
+        "impact": "📈 Consumer Discretionary +1.1%",
+        "date": "15 Set 2025"
+    },
+    {
+        "title": "🔍 Alphabet Supera $3 Trilioni di Market Cap",
+        "description": "Google ha raggiunto un nuovo massimo storico, spingendo il settore Communication Services a +2.33%.",
+        "impact": "📈 Tech e Communication Services",
+        "date": "15 Set 2025"
+    },
+    {
+        "title": "🇺🇸🇨🇳 Progressi nei Negoziati USA-Cina su TikTok",
+        "description": "Il Segretario al Tesoro Bessent ha indicato che 'abbiamo un framework' per un accordo sulla proprietà di TikTok dopo i negoziati a Madrid.",
+        "impact": "📈 Mercati asiatici e tech",
+        "date": "15 Set 2025"
+    },
+    {
+        "title": "💼 Small-Cap Raggiungono Nuovi Massimi",
+        "description": "Il Russell 2000 ha superato il record di novembre 2021, beneficiando delle aspettative di tagli ai tassi. Performance settimanale +2.2%.",
+        "impact": "📈 Small-cap outperformance",
+        "date": "17 Set 2025"
+    },
+    {
+        "title": "💰 Oro e Argento ai Massimi Ciclici",
+        "description": "L'argento ha toccato nuovi massimi ciclici sopra $40/oncia, mentre l'oro continua la sua corsa rialzista oltre $2,650.",
+        "impact": "📈 Commodities e metalli preziosi",
+        "date": "12 Set 2025"
+    },
+    {
+        "title": "📊 Dati Inflazione in Linea con Attese",
+        "description": "CPI USA agosto a +2.9% anno su anno, +0.4% mensile. Core CPI a +3.1%, supportando le aspettative di tagli graduali della Fed.",
+        "impact": "🎯 Conferma policy Fed moderata",
+        "date": "12 Set 2025"
+    },
+    {
+        "title": "🏗️ Richieste Sussidi Disoccupazione ai Massimi 2021",
+        "description": "Le richieste settimanali sono salite a 263,000, il livello più alto da ottobre 2021, rafforzando il caso per tagli ai tassi.",
+        "impact": "📈 Maggiori aspettative tagli Fed",
+        "date": "12 Set 2025"
+    }
+]
+
+# Display news in a grid layout
+col1, col2 = st.columns(2)
+
+for i, news in enumerate(market_news):
+    with col1 if i % 2 == 0 else col2:
+        with st.container():
+            st.markdown(f"**{news['title']}**")
+            st.markdown(f"*{news['date']}*")
+            st.markdown(news['description'])
+            st.markdown(f"**Impatto:** {news['impact']}")
+            st.markdown("---")
+
+# Summary of weekly market performance
+st.info("""
+🔔 **Riassunto Settimanale**: I mercati hanno chiuso ai massimi storici con S&P 500 (+1.2%), Nasdaq (+2.2%) e Dow (+1.0%) tutti in rialzo. 
+Il taglio dei tassi Fed ha alimentato l'ottimismo, con particolare forza nei small-cap (+2.2%) che hanno raggiunto nuovi record. 
+I settori vincenti sono stati Technology, Communication Services e Consumer Discretionary.
+""")
+
 else:
     # Welcome message
     st.markdown("""
@@ -630,11 +667,13 @@ else:
 
     Questa app utilizza un **algoritmo di scoring intelligente** per identificare le migliori opportunità di investimento.
 
-    ### 🎯 Nuove Funzionalità:
+    ### 🎯 Funzionalità Principali:
 
     - **🔥 TOP 5 PICKS**: Algoritmo che seleziona automaticamente i 5 titoli con maggiori probabilità di guadagno nelle prossime 2-4 settimane
     - **📈 Link TradingView**: Accesso diretto ai grafici di ogni titolo
     - **🧮 Investment Score**: Punteggio da 0-100 basato su analisi multi-fattoriale
+    - **📊 Performance Settoriale**: Analisi delle performance settimanali per settore
+    - **📰 News di Mercato**: Driver chiave della settimana
 
     ### 📊 Algoritmo di Scoring:
 
@@ -646,28 +685,19 @@ else:
     - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
     - **Market Cap** (10%): Dimensione aziendale ottimale
 
-    ### 🔍 Criteri di Screening:
-
-    - **Market Cap**: Tra 1 miliardo e 200 trilioni di dollari
-    - **Trend**: Prezzo sopra SMA50 e SMA200 (trend rialzista)
-    - **RSI**: Tra 30 e 80 (momentum controllato)
-    - **MACD**: MACD sopra la linea di segnale
-    - **Volatilità**: Maggiore del 0.2% (sufficiente movimento)
-    - **Rating Tecnico**: Superiore a 0.1 (segnale positivo)
-    - **Float Shares**: Maggiore del 30% (buona liquidità)
-
     **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi e scoprire le TOP 5 PICKS!**
     """)
 
 # --- SIDEBAR INFO ---
 st.sidebar.title("ℹ️ Informazioni")
 st.sidebar.markdown("""
-### 🎯 Nuove Funzionalità:
+### 🎯 Funzionalità:
 
 - **🏆 TOP 5 PICKS**: Selezione automatica dei titoli migliori
 - **🧮 Investment Score**: Punteggio intelligente 0-100
 - **📈 Link TradingView**: Accesso diretto ai grafici
-- **📊 Analisi Multi-fattoriale**: Algoritmo avanzato
+- **📊 Performance Settori**: Analisi settimanale
+- **📰 Market News**: Driver di mercato aggiornati
 
 ### 🔬 Come Funziona lo Scoring:
 
