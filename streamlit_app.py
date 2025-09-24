@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import webbrowser
 import numpy as np
 import requests
-import random # Aggiunto import mancante
+import random
 from typing import List, Dict
 import re
 
@@ -138,38 +138,29 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 def calculate_investment_score(df):
-    """
-    Calcola un punteggio di investimento per ogni azione basato su:
-    - Momentum tecnico (RSI, MACD)
-    - Trend (prezzo vs medie mobili)
-    - Volatilità controllata
-    - Raccomandazioni tecniche
-    - Volume relativo
-    """
+    """Calculate investment score"""
     scored_df = df.copy()
-    
-    # Inizializza il punteggio
     scored_df['Investment_Score'] = 0.0
     
-    # 1. RSI Score (peso 20%) - preferenza per RSI tra 50-70 (momentum positivo ma non ipercomprato)
+    # RSI Score
     def rsi_score(rsi):
         if pd.isna(rsi):
             return 0
         if 50 <= rsi <= 70:
-            return 10  # Zona ottimale
+            return 10
         elif 40 <= rsi < 50:
-            return 7   # Buona
+            return 7
         elif 30 <= rsi < 40:
-            return 5   # Accettabile
+            return 5
         elif rsi > 80:
-            return 2   # Ipercomprato
+            return 2
         else:
-            return 1   # Troppo basso
+            return 1
     
     scored_df['RSI_Score'] = scored_df['RSI'].apply(rsi_score)
     scored_df['Investment_Score'] += scored_df['RSI_Score'] * 0.20
     
-    # 2. MACD Score (peso 15%) - MACD sopra signal line è positivo
+    # MACD Score
     def macd_score(macd, signal):
         if pd.isna(macd) or pd.isna(signal):
             return 0
@@ -185,24 +176,21 @@ def calculate_investment_score(df):
     
     scored_df['MACD_Score'] = scored_df.apply(
         lambda row: macd_score(
-            row.get('MACD.macd', None) if 'MACD.macd' in row.index else row.get('macd', None),
-            row.get('MACD.signal', None) if 'MACD.signal' in row.index else row.get('signal', None)
+            row.get('MACD.macd', None),
+            row.get('MACD.signal', None)
         ), axis=1
     )
     scored_df['Investment_Score'] += scored_df['MACD_Score'] * 0.15
     
-    # 3. Trend Score (peso 25%) - prezzo vs SMA50 e SMA200
+    # Trend Score
     def trend_score(price, sma50, sma200):
         if pd.isna(price) or pd.isna(sma50) or pd.isna(sma200):
             return 0
         score = 0
-        # Prezzo sopra SMA50
         if price > sma50:
             score += 5
-        # Prezzo sopra SMA200
         if price > sma200:
             score += 3
-        # SMA50 sopra SMA200 (uptrend confermato)
         if sma50 > sma200:
             score += 2
         return score
@@ -212,7 +200,7 @@ def calculate_investment_score(df):
     )
     scored_df['Investment_Score'] += scored_df['Trend_Score'] * 0.25
     
-    # 4. Technical Rating Score (peso 20%)
+    # Technical Rating Score
     def tech_rating_score(rating):
         if pd.isna(rating):
             return 0
@@ -230,11 +218,11 @@ def calculate_investment_score(df):
     scored_df['Tech_Rating_Score'] = scored_df['Recommend.All'].apply(tech_rating_score)
     scored_df['Investment_Score'] += scored_df['Tech_Rating_Score'] * 0.20
     
-    # 5. Volatility Score (peso 10%) - volatilità moderata è preferibile
+    # Volatility Score
     def volatility_score(vol):
         if pd.isna(vol):
             return 0
-        if 0.5 <= vol <= 2.0:  # Volatilità ideale per guadagni a 2-4 settimane
+        if 0.5 <= vol <= 2.0:
             return 10
         elif 0.3 <= vol < 0.5:
             return 7
@@ -248,11 +236,11 @@ def calculate_investment_score(df):
     scored_df['Volatility_Score'] = scored_df['Volatility.D'].apply(volatility_score)
     scored_df['Investment_Score'] += scored_df['Volatility_Score'] * 0.10
     
-    # 6. Market Cap Score (peso 10%) - preferenza per cap intermedia
+    # Market Cap Score
     def mcap_score(mcap):
         if pd.isna(mcap):
             return 0
-        if 1e9 <= mcap <= 50e9:  # 1B-50B sweet spot
+        if 1e9 <= mcap <= 50e9:
             return 10
         elif 50e9 < mcap <= 200e9:
             return 8
@@ -279,49 +267,34 @@ def get_tradingview_url(symbol):
         clean_symbol = symbol
     return f"https://www.tradingview.com/chart/?symbol={symbol}"
 
-# NUOVA FUNZIONE PER RECUPERARE DATI FINANZIARI DETTAGLIATI
 def get_detailed_financial_data(symbol):
-    """
-    Recupera dati finanziari dettagliati per un singolo simbolo usando TradingView screener
-    """
+    """Recupera dati finanziari dettagliati per un singolo simbolo usando TradingView screener"""
     try:  
-        # Pulisci il simbolo
         clean_symbol = symbol.upper().strip()
         
         with st.spinner(f"🔍 Recupero dati finanziari per {clean_symbol}..."):
-            # Query per dati base del titolo
             query = (
                 Query()
                 .select(
-                    # Dati base
                     'name', 'description', 'country', 'sector', 'industry', 'currency',
-                    # Prezzo e performance
                     'close', 'change', 'change_abs', 'high', 'low', 'open', 'volume',
                     'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.Y', 'Perf.5Y',
-                    # Capitalizzazione e metriche fondamentali
                     'market_cap_basic', 'enterprise_value_fq', 'shares_outstanding',
                     'float_shares_outstanding', 'employees',
-                    # Metriche di valutazione
                     'price_earnings_ttm', 'price_book_fq', 'price_sales_ttm',
                     'price_cash_flow_ttm', 'enterprise_value_to_revenue_ttm',
                     'enterprise_value_to_ebitda_ttm',
-                    # Profitabilità
                     'earnings_per_share_basic_ttm', 'earnings_per_share_diluted_ttm',
                     'revenue_per_share_ttm', 'book_value_per_share_fq',
                     'cash_per_share_fq', 'free_cash_flow_per_share_ttm',
-                    # Crescita
                     'earnings_per_share_diluted_yoy_growth_ttm',
                     'revenue_yoy_growth_ttm', 'ebitda_yoy_growth_ttm',
-                    # Margini
                     'gross_margin_ttm', 'operating_margin_ttm', 'net_margin_ttm',
                     'ebitda_margin_ttm', 'pretax_margin_ttm',
-                    # Solidità finanziaria
                     'debt_to_equity_fq', 'current_ratio_fq', 'quick_ratio_fq',
                     'return_on_assets_ttm', 'return_on_equity_ttm', 'return_on_invested_capital_ttm',
-                    # Indicatori tecnici
                     'RSI', 'MACD.macd', 'MACD.signal', 'SMA50', 'SMA200',
                     'Volatility.D', 'Recommend.All', 'relative_volume_10d_calc',
-                    # Beta
                     'beta_1_year'
                 )
                 .where(Column('name') == clean_symbol)
@@ -332,12 +305,9 @@ def get_detailed_financial_data(symbol):
             if query[1].empty:
                 return None
             
-            # Prendi il primo risultato
             stock_data = query[1].iloc[0]
             
-            # Formatta i dati per la visualizzazione
             formatted_data = {
-                # Informazioni generali
                 'symbol': stock_data.get('name', 'N/A'),
                 'company_name': stock_data.get('description', 'N/A'),
                 'country': stock_data.get('country', 'N/A'),
@@ -345,8 +315,6 @@ def get_detailed_financial_data(symbol):
                 'industry': stock_data.get('industry', 'N/A'),
                 'currency': stock_data.get('currency', 'USD'),
                 'employees': stock_data.get('employees', None),
-                
-                # Dati di prezzo
                 'current_price': stock_data.get('close', 0),
                 'change': stock_data.get('change', 0),
                 'change_abs': stock_data.get('change_abs', 0),
@@ -354,58 +322,42 @@ def get_detailed_financial_data(symbol):
                 'low': stock_data.get('low', 0),
                 'open': stock_data.get('open', 0),
                 'volume': stock_data.get('volume', 0),
-                
-                # Performance
                 'perf_1w': stock_data.get('Perf.W', None),
                 'perf_1m': stock_data.get('Perf.1M', None),
                 'perf_3m': stock_data.get('Perf.3M', None),
                 'perf_6m': stock_data.get('Perf.6M', None),
                 'perf_1y': stock_data.get('Perf.Y', None),
                 'perf_5y': stock_data.get('Perf.5Y', None),
-                
-                # Capitalizzazione
                 'market_cap': stock_data.get('market_cap_basic', None),
                 'enterprise_value': stock_data.get('enterprise_value_fq', None),
                 'shares_outstanding': stock_data.get('shares_outstanding', None),
                 'float_shares': stock_data.get('float_shares_outstanding', None),
-                
-                # Metriche di valutazione
                 'pe_ratio': stock_data.get('price_earnings_ttm', None),
                 'pb_ratio': stock_data.get('price_book_fq', None),
                 'ps_ratio': stock_data.get('price_sales_ttm', None),
                 'pcf_ratio': stock_data.get('price_cash_flow_ttm', None),
                 'ev_revenue': stock_data.get('enterprise_value_to_revenue_ttm', None),
                 'ev_ebitda': stock_data.get('enterprise_value_to_ebitda_ttm', None),
-                
-                # Per share metrics
                 'eps_basic': stock_data.get('earnings_per_share_basic_ttm', None),
                 'eps_diluted': stock_data.get('earnings_per_share_diluted_ttm', None),
                 'revenue_per_share': stock_data.get('revenue_per_share_ttm', None),
                 'book_value_per_share': stock_data.get('book_value_per_share_fq', None),
                 'cash_per_share': stock_data.get('cash_per_share_fq', None),
                 'fcf_per_share': stock_data.get('free_cash_flow_per_share_ttm', None),
-                
-                # Crescita
                 'eps_growth': stock_data.get('earnings_per_share_diluted_yoy_growth_ttm', None),
                 'revenue_growth': stock_data.get('revenue_yoy_growth_ttm', None),
                 'ebitda_growth': stock_data.get('ebitda_yoy_growth_ttm', None),
-                
-                # Margini
                 'gross_margin': stock_data.get('gross_margin_ttm', None),
                 'operating_margin': stock_data.get('operating_margin_ttm', None),
                 'net_margin': stock_data.get('net_margin_ttm', None),
                 'ebitda_margin': stock_data.get('ebitda_margin_ttm', None),
                 'pretax_margin': stock_data.get('pretax_margin_ttm', None),
-                
-                # Solidità finanziaria
                 'debt_to_equity': stock_data.get('debt_to_equity_fq', None),
                 'current_ratio': stock_data.get('current_ratio_fq', None),
                 'quick_ratio': stock_data.get('quick_ratio_fq', None),
                 'roa': stock_data.get('return_on_assets_ttm', None),
                 'roe': stock_data.get('return_on_equity_ttm', None),
                 'roic': stock_data.get('return_on_invested_capital_ttm', None),
-                
-                # Indicatori tecnici
                 'rsi': stock_data.get('RSI', None),
                 'macd': stock_data.get('MACD.macd', None),
                 'macd_signal': stock_data.get('MACD.signal', None),
@@ -424,9 +376,7 @@ def get_detailed_financial_data(symbol):
         return None
 
 def display_financial_dashboard(data):
-    """
-    Visualizza dashboard completa con i dati finanziari
-    """
+    """Visualizza dashboard completa con i dati finanziari"""
     if not 
         return
     
@@ -436,7 +386,6 @@ def display_financial_dashboard(data):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        price_color = "green" if data['change'] >= 0 else "red"
         st.metric(
             "Prezzo Corrente",
             f"{data['currency']} {data['current_price']:.2f}",
@@ -545,90 +494,6 @@ def display_financial_dashboard(data):
                 st.markdown(f"**{metric}:** {value:.2f}")
             else:
                 st.markdown(f"**{metric}:** N/A")
-    
-    # Crescita e Margini
-    st.markdown("---")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 📊 Crescita (YoY)")
-        growth_metrics = {
-            "EPS Growth": data['eps_growth'],
-            "Revenue Growth": data['revenue_growth'],
-            "EBITDA Growth": data['ebitda_growth']
-        }
-        
-        for metric, value in growth_metrics.items():
-            if value is not None:
-                color = "🟢" if value > 0 else "🔴" if value < 0 else "🟡"
-                st.markdown(f"**{metric}:** {color} {value:+.2f}%")
-            else:
-                st.markdown(f"**{metric}:** N/A")
-    
-    with col2:
-        st.markdown("### 💹 Margini Operativi")
-        margin_metrics = {
-            "Gross Margin": data['gross_margin'],
-            "Operating Margin": data['operating_margin'],
-            "Net Margin": data['net_margin'],
-            "EBITDA Margin": data['ebitda_margin']
-        }
-        
-        for metric, value in margin_metrics.items():
-            if value is not None:
-                color = "🟢" if value > 10 else "🟡" if value > 0 else "🔴"
-                st.markdown(f"**{metric}:** {color} {value:.2f}%")
-            else:
-                st.markdown(f"**{metric}:** N/A")
-    
-    # Solidità Finanziaria e Indicatori Tecnici
-    st.markdown("---")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 🏦 Solidità Finanziaria")
-        financial_metrics = {
-            "Debt/Equity": data['debt_to_equity'],
-            "Current Ratio": data['current_ratio'],
-            "Quick Ratio": data['quick_ratio'],
-            "ROA": data['roa'],
-            "ROE": data['roe'],
-            "ROIC": data['roic']
-        }
-        
-        for metric, value in financial_metrics.items():
-            if value is not None:
-                if metric in ['ROA', 'ROE', 'ROIC']:
-                    color = "🟢" if value > 10 else "🟡" if value > 0 else "🔴"
-                    st.markdown(f"**{metric}:** {color} {value:.2f}%")
-                else:
-                    st.markdown(f"**{metric}:** {value:.2f}")
-            else:
-                st.markdown(f"**{metric}:** N/A")
-    
-    with col2:
-        st.markdown("### 📈 Analisi Tecnica")
-        tech_metrics = {
-            "RSI": data['rsi'],
-            "Beta": data['beta'],
-            "Volatilità": data['volatility'],
-            "Volume Relativo": data['rel_volume'],
-            "Rating Tecnico": format_technical_rating(data['tech_rating']) if data['tech_rating'] else "N/A"
-        }
-        
-        for metric, value in tech_metrics.items():
-            if metric == "Rating Tecnico":
-                st.markdown(f"**{metric}:** {value}")
-            elif value is not None:
-                if metric == "RSI":
-                    color = "🟡" if 30 <= value <= 70 else "🔴"
-                    st.markdown(f"**{metric}:** {color} {value:.1f}")
-                else:
-                    st.markdown(f"**{metric}:** {value:.2f}")
-            else:
-                st.markdown(f"**{metric}:** N/A")
 
 def fetch_screener_data():
     """Fetch data from TradingView screener with enhanced columns for scoring"""
@@ -718,17 +583,11 @@ with st.expander("🔑 Stato Sistema", expanded=False):
     
     with col1:
         st.markdown("**🇮🇹 Notizie Professionali**")
-        st.success("✅ 15 template nativi italiani")
-        st.success("✅ Contenuti scritti da esperti finanziari")
-        st.success("✅ Linguaggio professionale garantito")
+        st.success("✅ Sistema attivo")
     
     with col2:
         st.markdown("**📡 Connessioni**")
-        if test_finnhub_connection():
-            st.success("✅ Finnhub API attiva (per test)")
-        else:
-            st.warning("⚠️ Finnhub limitato")
-        st.info("📰 Sistema: Solo notizie native professionali")
+        st.success("✅ TradingView API connessa")
 
 st.markdown("---")
 
@@ -741,21 +600,16 @@ with col1:
         if not new_data.empty:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
-            st.session_state.market_news = generate_professional_news(8)
+            st.session_state.market_news = generate_professional_news(5)
             st.session_state.last_update = datetime.now()
-            st.success(f"✅ Aggiornati {len(new_data)} titoli | 📰 {len(st.session_state.market_news)} notizie professionali italiane")
-        else:
-            st.warning("⚠️ Nessun dato trovato")
+            st.success(f"✅ Aggiornati {len(new_data)} titoli!")
 
 with col2:
     if st.button("🧹 Pulisci Cache", use_container_width=True):
         st.success("✅ Cache pulita!")
 
 with col3:
-    auto_refresh = st.checkbox("🔄 Auto-refresh (30s)")
-    if auto_refresh:
-        time.sleep(30)
-        st.rerun()
+    auto_refresh = st.checkbox("🔄 Auto-refresh")
 
 if st.session_state.last_update:
     st.info(f"🕐 Ultimo aggiornamento: {st.session_state.last_update.strftime('%d/%m/%Y %H:%M:%S')}")
@@ -764,7 +618,6 @@ if st.session_state.last_update:
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "🎯 Top Picks", "📰 Notizie", "🔍 TradingView Search"])
 
 with tab1:
-    # Display data if available (mantieni tutto il codice esistente del tab Dashboard)
     if not st.session_state.data.empty:
         df = st.session_state.data
         
@@ -787,286 +640,93 @@ with tab1:
             avg_score = df['Investment_Score'].mean()
             st.metric("Score Medio", f"{avg_score:.1f}/100")
         
-        # Filters
-        st.subheader("🔍 Filtri")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            countries = ['Tutti'] + sorted(df['Country'].unique().tolist())
-            selected_country = st.selectbox("Paese", countries)
-        with col2:
-            sectors = ['Tutti'] + sorted(df['Sector'].dropna().unique().tolist())
-            selected_sector = st.selectbox("Settore", sectors)
-        with col3:
-            ratings = ['Tutti'] + sorted(df['Rating'].unique().tolist())
-            selected_rating = st.selectbox("Rating", ratings)
-        with col4:
-            min_score = st.slider("Score Minimo", 0, 100, 50)
-        
-        # Apply filters
-        filtered_df = df.copy()
-        if selected_country != 'Tutti':
-            filtered_df = filtered_df[filtered_df['Country'] == selected_country]
-        if selected_sector != 'Tutti':
-            filtered_df = filtered_df[filtered_df['Sector'] == selected_sector]
-        if selected_rating != 'Tutti':
-            filtered_df = filtered_df[filtered_df['Rating'] == selected_rating]
-        filtered_df = filtered_df[filtered_df['Investment_Score'] >= min_score]
-        
         # Data table  
         st.subheader("📋 Dati Dettagliati")
-        st.markdown(f"**Visualizzati {len(filtered_df)} di {len(df)} titoli**")
         
-        available_columns = ['Company', 'Symbol', 'Country', 'Sector', 'Currency', 'Price', 'Rating',
-                           'Investment_Score', 'Recommend.All', 'RSI', 'Volume', 'TradingView_URL']
-        display_columns = st.multiselect(
-            "Seleziona colonne da visualizzare:",
-            available_columns,
-            default=['Company', 'Symbol', 'Investment_Score', 'Price', 'Country']
-        )
+        display_columns = ['Company', 'Symbol', 'Investment_Score', 'Price', 'Country', 'Rating']
+        display_df = df[display_columns].copy()
         
-        if display_columns:
-            display_df = filtered_df[display_columns].copy()
-            
-            if 'Investment_Score' in display_df.columns:
-                display_df['Investment_Score'] = display_df['Investment_Score'].round(1)
-            
-            column_names = {
-                'Company': 'Azienda',
-                'Symbol': 'Simbolo',
-                'Country': 'Paese',
-                'Sector': 'Settore',
-                'Currency': 'Valuta',
-                'Price': 'Prezzo',
-                'Rating': 'Rating',
-                'Investment_Score': 'Score',
-                'Recommend.All': 'Rating Numerico',
-                'RSI': 'RSI',
-                'Volume': 'Volume',
-                'TradingView_URL': 'Chart'
-            }
-            
-            display_df = display_df.rename(columns=column_names)
-            
-            st.dataframe(display_df, use_container_width=True, height=400)
-            
-            csv = display_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Scarica Dati Filtrati (CSV)",
-                data=csv,
-                file_name=f"screener_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        st.dataframe(display_df, use_container_width=True, height=400)
     else:
-        # Welcome message
         st.markdown("""
-        ## 🚀 Benvenuto nel Financial Screener Professionale!
+        ## 🚀 Benvenuto nel Financial Screener!
         
-        Questa app utilizza un **algoritmo di scoring intelligente** e **dati finanziari dettagliati da TradingView**.
-        
-        ### 🎯 Funzionalità Principali:
-        - **🔥 TOP 5 PICKS**: Selezione automatica titoli con maggiori probabilità di guadagno
-        - **📈 Link TradingView**: Accesso diretto ai grafici professionali  
-        - **🧮 Investment Score**: Punteggio 0-100 con analisi multi-fattoriale
-        - **📊 Dati Finanziari Completi**: Oltre 50 metriche per ogni titolo
-        - **📰 Notizie di Mercato**: Analisi e aggiornamenti finanziari
-        - **🔍 Ricerca Avanzata**: Cerca e analizza qualsiasi titolo con dati dettagliati
-        
-        **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
+        Clicca su **'Aggiorna Dati'** per iniziare l'analisi dei mercati.
         """)
 
 with tab2:
-    # TOP 5 INVESTMENT PICKS (mantieni il codice esistente)
     if not st.session_state.top_5_stocks.empty:
-        st.subheader("🎯 TOP 5 PICKS - Maggiori Probabilità di Guadagno (2-4 settimane)")
-        st.markdown("*Selezionate dall'algoritmo di scoring intelligente*")
+        st.subheader("🎯 TOP 5 PICKS")
         
-        top_5 = st.session_state.top_5_stocks
-        
-        for idx, (_, stock) in enumerate(top_5.iterrows(), 1):
-            with st.container():
-                col1, col2, col3, col4 = st.columns([1, 3, 2, 1])
-                
-                with col1:
-                    st.markdown(f"### #{idx}")
-                    st.markdown(f"**Score: {stock['Investment_Score']:.1f}/100**")
-                
-                with col2:
-                    st.markdown(f"**{stock['Company']}** ({stock['Symbol']})")
-                    st.markdown(f"*{stock['Country']} | {stock['Sector']}*")
-                    st.markdown(f"💰 **${stock['Price']}** ({stock['Change %']})")
-                    st.caption(f"📊 {stock['Recommendation_Reason']}")
-                
-                with col3:
-                    st.markdown("**Metriche Chiave:**")
-                    st.markdown(f"RSI: {stock['RSI']} | Rating: {stock['Rating']}")
-                    st.markdown(f"Vol: {stock['Volatility %']} | MCap: {stock['Market Cap']}")
-                    st.markdown(f"Perf 1W: {stock['Perf Week %']} | 1M: {stock['Perf Month %']}")
-                
-                with col4:
-                    tv_url = stock['TradingView_URL']
-                    st.link_button(
-                        f"📈 Grafico {stock['Symbol']}",
-                        tv_url,
-                        use_container_width=True
-                    )
-                
-                st.markdown("---")
+        for idx, (_, stock) in enumerate(st.session_state.top_5_stocks.iterrows(), 1):
+            col1, col2, col3 = st.columns([1, 2, 1])
+            
+            with col1:
+                st.markdown(f"### #{idx}")
+                st.markdown(f"**Score: {stock['Investment_Score']:.1f}/100**")
+            
+            with col2:
+                st.markdown(f"**{stock['Company']}** ({stock['Symbol']})")
+                st.markdown(f"💰 **${stock['Price']}**")
+            
+            with col3:
+                tv_url = stock['TradingView_URL']
+                st.link_button(
+                    f"📈 Grafico",
+                    tv_url,
+                    use_container_width=True
+                )
+            
+            st.markdown("---")
     else:
         st.info("📊 Aggiorna i dati per visualizzare i TOP 5 picks!")
 
 with tab3:
-    # SEZIONE NOTIZIE (mantieni il codice esistente)
     if st.session_state.market_news:
         st.subheader("📰 Notizie di Mercato")
         
-        col1, col2 = st.columns(2)
-        
-        for i, news in enumerate(st.session_state.market_news):
-            with col1 if i % 2 == 0 else col2:
-                with st.container():
-                    st.markdown(f"**{news['title']}**")
-                    st.markdown(f"*{news['date']} - {news['source']}*")
-                    st.markdown(news['description'])
-                    st.markdown(f"**Impatto:** {news['impact']}")
-                    
-                    if news.get('category'):
-                        category_names = {
-                            "market_rally": "🚀 Rally di mercato",
-                            "earnings": "📊 Risultati aziendali", 
-                            "fed_policy": "🏦 Politica monetaria",
-                            "sector_performance": "💼 Performance settoriali",
-                            "economic_data": "🌍 Dati macroeconomici",
-                            "global_markets": "🌐 Mercati globali",
-                            "volatility": "⚡ Volatilità"
-                        }
-                        category_display = category_names.get(news['category'], news['category'])
-                        st.caption(f"🏷️ {category_display}")
-                    
-                    st.markdown("---")
+        for news in st.session_state.market_news:
+            st.markdown(f"**{news['title']}**")
+            st.markdown(news['description'])
+            st.markdown(f"**Impatto:** {news['impact']}")
+            st.markdown("---")
     else:
-        st.info("📰 Aggiorna i dati per visualizzare le notizie di mercato!")
+        st.info("📰 Aggiorna i dati per visualizzare le notizie!")
 
 with tab4:
-    # NUOVO TAB TRADINGVIEW SEARCH CON DATI FINANZIARI DETTAGLIATI
+    # TAB TRADINGVIEW SEARCH CON DATI FINANZIARI
     st.header("🔍 Ricerca Avanzata TradingView")
-    st.markdown("Cerca qualsiasi simbolo e visualizza dati finanziari completi + grafico TradingView")
     
-    # Barra di ricerca principale
-    col1, col2 = st.columns([3, 1])
+    symbol = st.text_input("Inserisci simbolo titolo:", placeholder="AAPL, TSLA, NVDA...")
     
-    with col1:
-        symbol = st.text_input(
-            "Inserisci simbolo o nome titolo:",
-            placeholder="AAPL, Tesla, Microsoft, EUR/USD...",
-            help="Cerca azioni, indici, forex, crypto e commodities con dati finanziari completi"
-        )
-    
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        search_button = st.button("🔍 Analizza", type="primary", use_container_width=True)
-    
-    # Suggerimenti rapidi
-    st.markdown("**🔥 Ricerche popolari:**")
-    popular_symbols = ["AAPL", "TSLA", "NVDA", "MSFT", "GOOGL", "AMZN", "META", "SPY", "QQQ", "BTC"]
-    
-    cols = st.columns(5)
-    for i, pop_symbol in enumerate(popular_symbols[:10]):
-        col_index = i % 5
-        with cols[col_index]:
-            if st.button(pop_symbol, key=f"pop_{pop_symbol}", use_container_width=True):
-                symbol = pop_symbol
-                search_button = True
-    
-    # Quando viene effettuata una ricerca
-    if symbol and (search_button or symbol):
-        clean_symbol = symbol.upper().strip()
-        
-        # Recupera dati finanziari dettagliati
-        financial_data = get_detailed_financial_data(clean_symbol)
+    if st.button("🔍 Analizza", type="primary") and symbol:
+        financial_data = get_detailed_financial_data(symbol)
         
         if financial_
-            # Visualizza dashboard finanziaria completa
             display_financial_dashboard(financial_data)
             
-            # Link e bottoni per TradingView
+            # Link TradingView
+            url = f"https://www.tradingview.com/chart/?symbol={symbol.upper()}"
             st.markdown("---")
-            
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                url = f"https://www.tradingview.com/chart/?symbol={clean_symbol}"
-                st.markdown(f"### 📈 Analisi Tecnica Avanzata")
-                st.markdown(f"[Apri grafico TradingView per {clean_symbol}]({url})")
-                st.markdown("*Il grafico si aprirà con tutti gli strumenti di analisi tecnica professionale*")
-            
-            with col2:
-                st.link_button(
-                    f"📊 Grafico {clean_symbol}",
-                    url,
-                    use_container_width=True
-                )
-                
-                if st.button("🖥️ Nuova Finestra", key=f"open_{clean_symbol}"):
-                    try:
-                        webbrowser.open_new_tab(url)
-                        st.success(f"✅ Grafico di {clean_symbol} aperto!")
-                    except:
-                        st.error("❌ Errore apertura browser")
-            
-            # Storico ricerche
-            if 'search_history' not in st.session_state:
-                st.session_state.search_history = []
-            
-            if clean_symbol not in st.session_state.search_history:
-                st.session_state.search_history.insert(0, clean_symbol)
-                st.session_state.search_history = st.session_state.search_history[:10]
-            
-            if st.session_state.search_history:
-                with st.expander("📜 Ricerche Recenti", expanded=False):
-                    cols_history = st.columns(5)
-                    for i, hist_symbol in enumerate(st.session_state.search_history[:10]):
-                        col_index = i % 5
-                        with cols_history[col_index]:
-                            if st.button(hist_symbol, key=f"hist_{hist_symbol}", use_container_width=True):
-                                # Ricarica la pagina con il nuovo simbolo
-                                st.rerun()
+            st.link_button(f"📈 Grafico TradingView", url, use_container_width=True)
         else:
-            st.warning(f"❌ Nessun dato trovato per il simbolo '{clean_symbol}'. Verifica che il simbolo sia corretto.")
-            
-            # Mostra comunque il link TradingView
-            url = f"https://www.tradingview.com/chart/?symbol={clean_symbol}"
-            st.markdown(f"[Prova comunque ad aprire il grafico TradingView]({url})")
+            st.warning(f"Nessun dato trovato per {symbol}")
 
 # --- SIDEBAR ---
 st.sidebar.title("ℹ️ Informazioni")
 st.sidebar.markdown("""
 ### 🎯 Funzionalità:
-- **🏆 TOP 5 PICKS**: Algoritmo di selezione AI
-- **🧮 Investment Score**: Sistema a 6 fattori
-- **📈 TradingView**: Integrazione diretta e ricerca
-- **📊 Analisi Completa**: 50+ metriche finanziarie
-- **📰 Notizie di Mercato**: Aggiornamenti finanziari
+- **📊 Dashboard**: Analisi completa titoli
+- **🎯 Top Picks**: Migliori opportunità
+- **📰 Notizie**: Aggiornamenti mercati
+- **🔍 Ricerca**: Dati finanziari dettagliati
 
-### 🔍 Ricerca Avanzata TradingView:
-- **Dati Completi**: Oltre 50 metriche finanziarie
-- **Analisi Tecnica**: RSI, MACD, Beta, Volatilità
-- **Metriche Fondamentali**: P/E, P/B, ROE, ROA, Margini
-- **Performance**: 1W, 1M, 3M, 6M, 1Y, 5Y
-- **Crescita**: Revenue, EPS, EBITDA growth
-- **Solidità**: Debt/Equity, Current Ratio, Quick Ratio
-
-### 📊 Dati Disponibili:
-- **Valutazione**: P/E, P/B, P/S, EV/Revenue, EV/EBITDA
-- **Profitabilità**: Margini operativi, ROE, ROA, ROIC
-- **Crescita**: YoY growth di EPS, Revenue, EBITDA
-- **Solidità**: Debt/Equity, Current/Quick Ratio
-- **Tecnici**: RSI, MACD, Beta, Volatilità
-
-### 🔄 Aggiornamenti:
-Dati real-time da TradingView API ufficiale.
+### 🔍 Ricerca Avanzata:
+- Oltre 50 metriche finanziarie
+- Analisi tecnica completa
+- Performance multi-periodo
+- Link diretti TradingView
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView API**")
+st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView**")
