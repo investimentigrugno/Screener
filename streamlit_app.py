@@ -775,5 +775,3 @@ Sistema automatizzato con contenuti sempre aggiornati.
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Finnhub**")
-
-Aggiungi i dati finanziari nel risultato della ricerca nel tab della ricerca con tradingview, utilizza queste refernce https://shner-elmo.github.io/TradingView-Screener/3.0.0/tradingview_screener.html
