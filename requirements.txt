@@ -5,3 +5,4 @@ plotly>=5.15.0
 numpy
 requests
 finnhub-python
+googletrans==4.0.0-rc1
