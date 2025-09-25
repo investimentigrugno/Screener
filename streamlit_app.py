@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 import webbrowser
 import numpy as np
 import requests
-import random
-import finnhub  # per API Finnhub
+import random # Aggiunto import mancante
+import finnhub  # AGGIUNTO per API Finnhub
 from typing import List, Dict
 import re
 
@@ -37,113 +37,38 @@ st.set_page_config(
 FINNHUB_API_KEY = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-# Configura il client Finnhub
+# AGGIUNTO: Configura il client Finnhub
 try:
     finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
 except:
     finnhub_client = None
 
-# --- FUNZIONI PER LE NOTIZIE FINNHUB ---
-def fetch_finnhub_general_news(category='general', limit=10):
-    """Recupera notizie generali dal mercato usando Finnhub API"""
+# AGGIUNTO: Funzioni per le notizie Finnhub
+def fetch_finnhub_market_news(count=8):
+    """Recupera notizie reali da Finnhub API"""
     if not finnhub_client:
         return []
     
     try:
-        news_data = finnhub_client.general_news(category, min_id=0)
-        
-        if not news_
-            return []
-            
-        formatted_news = []
-        for news in news_data[:limit]:
-            formatted_news.append({
-                'title': news.get('headline', 'Titolo non disponibile'),
-                'description': news.get('summary', 'Descrizione non disponibile'),
-                'impact': categorize_news_impact(news.get('category', '')),
-                'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
-                'source': news.get('source', 'Finnhub'),
-                'url': news.get('url', ''),
-                'category': news.get('category', 'general')
-            })
-            
-        return formatted_news
-        
-    except Exception as e:
-        st.error(f"Errore nel recupero notizie Finnhub: {e}")
-        return []
-
-def fetch_finnhub_company_news(symbol, days_back=7, limit=5):
-    """Recupera notizie specifiche di una company usando Finnhub API"""
-    if not finnhub_client:
-        return []
-        
-    try:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
-        
-        start_timestamp = start_date.strftime('%Y-%m-%d')
-        end_timestamp = end_date.strftime('%Y-%m-%d')
-        
-        news_data = finnhub_client.company_news(symbol, _from=start_timestamp, to=end_timestamp)
-        
-        if not news_
-            return []
-            
-        formatted_news = []
-        for news in news_data[:limit]:
-            formatted_news.append({
-                'title': news.get('headline', 'Titolo non disponibile'),
-                'description': news.get('summary', 'Descrizione non disponibile'),
-                'impact': f"📊 Impatto su {symbol}",
-                'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
-                'source': news.get('source', 'Finnhub'),
-                'url': news.get('url', ''),
-                'category': 'company_specific',
-                'symbol': symbol
-            })
-            
-        return formatted_news
-        
-    except Exception as e:
-        st.warning(f"Nessuna notizia trovata per {symbol}")
-        return []
-
-def categorize_news_impact(category):
-    """Categorizza l'impatto delle notizie basato sulla categoria"""
-    impact_map = {
-        'technology': '🚀 Impatto tecnologico',
-        'general': '📈 Impatto generale sui mercati',
-        'finance': '🏦 Impatto finanziario',
-        'merger': '🤝 Impatto M&A',
-        'ipo': '💎 Nuove IPO',
-        'forex': '💱 Impatto forex',
-        'crypto': '₿ Impatto crypto'
-    }
-    return impact_map.get(category.lower(), '📊 Impatto sui mercati')
-
-def fetch_market_news(count=8):
-    """Recupera solo notizie reali da Finnhub API"""
-    try:
         # Recupera notizie generali
-        general_news = fetch_finnhub_general_news('general', count//2)
+        general_news = finnhub_client.general_news('general', min_id=0)
         
-        # Aggiungi notizie forex
-        forex_news = fetch_finnhub_general_news('forex', 2)
-        general_news.extend(forex_news)
+        formatted_news = []
+        for news in general_news[:count]:
+            formatted_news.append({
+                'title': news.get('headline', 'Titolo non disponibile'),
+                'description': news.get('summary', 'Descrizione non disponibile'),
+                'impact': '📊 Impatto sui mercati',
+                'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
+                'source': news.get('source', 'Finnhub'),
+                'url': news.get('url', ''),
+                'category': 'general'
+            })
         
-        # Aggiungi notizie company-specific se possibile
-        if not st.session_state.top_5_stocks.empty:
-            top_symbols = st.session_state.top_5_stocks['Symbol'].head(2).tolist()
-            for symbol in top_symbols:
-                company_news = fetch_finnhub_company_news(symbol, limit=1)
-                general_news.extend(company_news)
+        return formatted_news
         
-        # Ritorna solo le notizie trovate (massimo count)
-        return general_news[:count]
-            
     except Exception as e:
-        st.error(f"Errore nel recupero notizie: {e}")
+        st.error(f"Errore Finnhub: {e}")
         return []
 
 def test_finnhub_connection():
@@ -170,7 +95,7 @@ def format_technical_rating(rating: float) -> str:
     elif rating >= 0.5:
         return '🟢 Strong Buy'
     elif rating >= 0.1:
-        return '🟢 Buy'
+        return '🟢 Buy'  
     elif rating >= -0.1:
         return '🟡 Neutral'
     elif rating >= -0.5:
@@ -434,16 +359,13 @@ with st.expander("🔑 Stato Sistema", expanded=False):
         st.markdown("**🌐 API Finnhub**")
         if test_finnhub_connection():
             st.success("✅ Connessione attiva")
-            st.success("✅ Notizie reali disponibili")
         else:
             st.warning("⚠️ API non disponibile")
-            st.info("📰 Nessuna notizia disponibile")
     
     with col2:
         st.markdown("**📡 Servizi**")
         st.success("✅ TradingView Screener attivo")
         st.success("✅ Sistema di scoring avanzato")
-        st.success("✅ Grafici TradingView integrati")
 
 st.markdown("---")
 
@@ -456,16 +378,12 @@ with col1:
         if not new_data.empty:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
-            
-            # Recupera solo notizie reali da Finnhub
-            with st.spinner("📰 Recupero notizie reali da Finnhub..."):
-                st.session_state.market_news = fetch_market_news(8)
-            
+            # MODIFICATO: Usa notizie Finnhub
+            st.session_state.market_news = fetch_finnhub_market_news(8)
             st.session_state.last_update = datetime.now()
             
             news_count = len(st.session_state.market_news)
-            
-            st.success(f"✅ Aggiornati {len(new_data)} titoli | 📰 {news_count} notizie da Finnhub")
+            st.success(f"✅ Aggiornati {len(new_data)} titoli | 📰 {news_count} notizie Finnhub")
         else:
             st.warning("⚠️ Nessun dato trovato")
 
@@ -683,7 +601,7 @@ with tab1:
         st.markdown("""
         ## 🚀 Benvenuto nel Financial Screener Professionale!
         
-        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie reali da Finnhub API**.
+        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie reali da Finnhub**.
         
         ### 🎯 Funzionalità Principali:
         
@@ -693,17 +611,6 @@ with tab1:
         - **📊 Performance Settoriale**: Dashboard completa per settori
         - **📰 Notizie di Mercato**: Aggiornamenti reali da Finnhub API
         - **🔍 Ricerca TradingView**: Cerca e visualizza grafici di qualsiasi titolo
-        
-        ### 📊 Sistema di Scoring:
-        
-        Il nostro algoritmo analizza:
-        
-        - **RSI ottimale** (20%): Momentum positivo senza ipercomprato
-        - **MACD signal** (15%): Conferma del trend rialzista
-        - **Trend analysis** (25%): Prezzo vs medie mobili
-        - **Technical rating** (20%): Raccomandazioni tecniche aggregate
-        - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
-        - **Market Cap** (10%): Dimensione aziendale ottimale
         
         **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
         """)
@@ -750,12 +657,9 @@ with tab2:
         st.info("📊 Aggiorna i dati per visualizzare i TOP 5 picks!")
 
 with tab3:
-    # SEZIONE NOTIZIE - SOLO FINNHUB
+    # SEZIONE NOTIZIE FINNHUB
     if st.session_state.market_news:
         st.subheader("📰 Notizie di Mercato da Finnhub")
-        
-        news_count = len(st.session_state.market_news)
-        st.info(f"📡 {news_count} notizie reali da Finnhub API")
         
         # Display news
         col1, col2 = st.columns(2)
@@ -770,43 +674,14 @@ with tab3:
                     if news.get('url'):
                         st.markdown(f"**[Leggi di più]({news['url']})**")
                     
-                    # Category badge
-                    if news.get('category'):
-                        category_names = {
-                            "general": "📈 Mercati generali",
-                            "forex": "💱 Forex",
-                            "crypto": "₿ Crypto",
-                            "merger": "🤝 M&A",
-                            "company_specific": "🏢 Notizie aziendali"
-                        }
-                        
-                        category_display = category_names.get(news['category'], news['category'])
-                        st.caption(f"🏷️ {category_display}")
-                    
                     st.markdown("---")
         
         # Summary
         current_date = datetime.now()
-        st.success(f"""
-        🎯 **Notizie di Mercato Aggiornate** - {current_date.strftime('%d/%m/%Y %H:%M')}
-        ✅ Fonte: Finnhub API | 🏷️ Categorizzazione automatica | 📊 Analisi di impatto
-        """)
+        st.success(f"🎯 **{len(st.session_state.market_news)} Notizie da Finnhub** - {current_date.strftime('%d/%m/%Y %H:%M')}")
     
     else:
-        st.info("📰 Aggiorna i dati per visualizzare le notizie reali da Finnhub!")
-        st.markdown("""
-        ### 📡 Notizie da Finnhub API
-        
-        Le notizie vengono recuperate direttamente dall'API Finnhub e includono:
-        
-        - **📈 Notizie generali**: Mercati globali e trend
-        - **💱 Forex**: Aggiornamenti valutari
-        - **🏢 Company News**: Notizie specifiche per i tuoi TOP picks
-        - **🔗 Link originali**: Accesso alle fonti complete
-        - **📊 Categorizzazione**: Impatto automatico sui mercati
-        
-        *Clicca su 'Aggiorna Dati' per recuperare le ultime notizie!*
-        """)
+        st.info("📰 Aggiorna i dati per visualizzare le notizie da Finnhub!")
 
 with tab4:
     # TRADINGVIEW SEARCH
@@ -844,34 +719,11 @@ L'algoritmo valuta ogni azione su 6 parametri:
 5. **Volatility Score**: Movimento controllato
 6. **Market Cap Score**: Dimensione ideale
 
-### 🎯 Scala di Valutazione:
-
-- **90-100**: Opportunità eccellente
-- **80-89**: Molto interessante
-- **70-79**: Buona opportunità
-- **60-69**: Da valutare
-- **<60**: Attenzione richiesta
-
-### 📈 Significato Rating:
-
-- **🟢 Strong Buy**: Molto positivo (≥0.5)
-- **🟢 Buy**: Positivo (≥0.1)
-- **🟡 Neutral**: Neutrale (-0.1 a 0.1)
-- **🔴 Sell**: Negativo (≤-0.1)
-- **🔴 Strong Sell**: Molto negativo (≤-0.5)
-
 ### 📰 Notizie Finnhub:
 
 - **🌐 Solo dati reali**: Nessun contenuto demo
-- **🏢 Company News**: Specifiche per i TOP picks
 - **📊 Categorizzazione**: Automatica per settore
 - **🔗 Fonti originali**: Link alle notizie complete
-
-### 🔍 Ricerca TradingView:
-
-- **Accesso diretto**: Link ai grafici professionali
-- **Tutti i mercati**: Azioni, forex, crypto, commodities
-- **Strumenti completi**: Analisi tecnica avanzata
 
 ### 🔄 Aggiornamenti:
 
