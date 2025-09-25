@@ -79,7 +79,7 @@ def generate_professional_news(count=8):
             "impact": news["impact"],
             "date": datetime.now().strftime("%d %b %Y"),
             "source": "Analisi di Mercato",
-            "url": news.get["url","Fonte"],
+            "url": news.get("url","Fonte"),
             "translation_quality": "Professional Italian",
             "category": news["category"]
         })
@@ -683,7 +683,7 @@ with tab3:
                     st.markdown(f"*{news['date']} - {news['source']}*")
                     st.markdown(news['description'])
                     st.markdown(f"**Impatto:** {news['impact']}")
-                    st.markdown(news['url'])
+                    st.markdown(url)
                     
                     # Solo category badge (manteniamo)
                     if news.get('category'):
