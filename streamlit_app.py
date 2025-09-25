@@ -8,17 +8,21 @@ import plotly.graph_objects as go
 import webbrowser
 import numpy as np
 import requests
-import random # Aggiunto import mancante
+import random
+import finnhub  # Aggiunto per API Finnhub
 from typing import List, Dict
 import re
 
 # --- SESSION STATE INITIALIZATION ---
 if 'data' not in st.session_state:
     st.session_state.data = pd.DataFrame()
+
 if 'last_update' not in st.session_state:
     st.session_state.last_update = None
+
 if 'top_5_stocks' not in st.session_state:
     st.session_state.top_5_stocks = pd.DataFrame()
+
 if 'market_news' not in st.session_state:
     st.session_state.market_news = []
 
@@ -33,7 +37,10 @@ st.set_page_config(
 FINNHUB_API_KEY = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-# --- SISTEMA NOTIZIE PROFESSIONALI SOLO ITALIANE ---
+# Configura il client Finnhub
+finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+
+# --- SISTEMA NOTIZIE PROFESSIONALI (FALLBACK) ---
 PROFESSIONAL_FINANCIAL_NEWS = [
     {
         "title": "📈 Wall Street chiude in territorio positivo sostenuta dai titoli tecnologici",
@@ -67,11 +74,122 @@ PROFESSIONAL_FINANCIAL_NEWS = [
     }
 ]
 
-def generate_professional_news(count=8):
-    """Genera notizie professionali italiane selezionando random dal pool"""
-    selected_news = random.sample(PROFESSIONAL_FINANCIAL_NEWS, min(count, len(PROFESSIONAL_FINANCIAL_NEWS)))
+# --- FUNZIONI PER LE NOTIZIE FINNHUB ---
+def fetch_finnhub_general_news(category='general', limit=10):
+    """Recupera notizie generali dal mercato usando Finnhub API"""
+    try:
+        news_data = finnhub_client.general_news(category, min_id=0)
+        
+        if not news_
+            return []
+            
+        formatted_news = []
+        for news in news_data[:limit]:
+            formatted_news.append({
+                'title': news.get('headline', 'Titolo non disponibile'),
+                'description': news.get('summary', 'Descrizione non disponibile'),
+                'impact': categorize_news_impact(news.get('category', '')),
+                'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
+                'source': news.get('source', 'Finnhub'),
+                'url': news.get('url', ''),
+                'category': news.get('category', 'general'),
+                'related_symbols': news.get('related', '')
+            })
+            
+        return formatted_news
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero notizie Finnhub: {e}")
+        return []
+
+def fetch_finnhub_company_news(symbol, days_back=7, limit=5):
+    """Recupera notizie specifiche di una company usando Finnhub API"""
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days_back)
+        
+        start_timestamp = start_date.strftime('%Y-%m-%d')
+        end_timestamp = end_date.strftime('%Y-%m-%d')
+        
+        news_data = finnhub_client.company_news(symbol, _from=start_timestamp, to=end_timestamp)
+        
+        if not news_
+            return []
+            
+        formatted_news = []
+        for news in news_data[:limit]:
+            formatted_news.append({
+                'title': news.get('headline', 'Titolo non disponibile'),
+                'description': news.get('summary', 'Descrizione non disponibile'),
+                'impact': f"📊 Impatto su {symbol}",
+                'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
+                'source': news.get('source', 'Finnhub'),
+                'url': news.get('url', ''),
+                'category': 'company_specific',
+                'symbol': symbol
+            })
+            
+        return formatted_news
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero notizie per {symbol}: {e}")
+        return []
+
+def categorize_news_impact(category):
+    """Categorizza l'impatto delle notizie basato sulla categoria"""
+    impact_map = {
+        'technology': '🚀 Impatto tecnologico',
+        'general': '📈 Impatto generale sui mercati',
+        'finance': '🏦 Impatto finanziario',
+        'merger': '🤝 Impatto M&A',
+        'ipo': '💎 Nuove IPO'
+    }
+    return impact_map.get(category.lower(), '📊 Impatto sui mercati')
+
+def translate_to_italian_basic(text):
+    """Traduzione base per alcune parole chiave"""
+    translations = {
+        'Stock': 'Azione',
+        'Market': 'Mercato', 
+        'Earnings': 'Utili',
+        'Revenue': 'Ricavi',
+        'Profit': 'Profitto',
+        'Loss': 'Perdita',
+        'CEO': 'Amministratore Delegato',
+        'IPO': 'Quotazione in Borsa'
+    }
     
+    for en, it in translations.items():
+        text = text.replace(en, it)
+    return text
+
+def generate_mixed_news(count=8):
+    """Genera un mix di notizie generali e specifiche delle aziende"""
+    try:
+        # Recupera notizie generali
+        general_news = fetch_finnhub_general_news('general', count//2)
+        
+        # Recupera notizie per le top companies del portfolio
+        company_news = []
+        if not st.session_state.top_5_stocks.empty:
+            top_symbols = st.session_state.top_5_stocks['Symbol'].head(3).tolist()
+            for symbol in top_symbols:
+                company_specific = fetch_finnhub_company_news(symbol, limit=2)
+                company_news.extend(company_specific)
+        
+        # Combina e limita
+        all_news = general_news + company_news
+        return all_news[:count]
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero notizie miste: {e}")
+        return []
+
+def generate_professional_news(count=8):
+    """Genera notizie professionali italiane selezionando random dal pool (FALLBACK)"""
+    selected_news = random.sample(PROFESSIONAL_FINANCIAL_NEWS, min(count, len(PROFESSIONAL_FINANCIAL_NEWS)))
     formatted_news = []
+    
     for news in selected_news:
         formatted_news.append({
             "title": news["title"],
@@ -79,12 +197,29 @@ def generate_professional_news(count=8):
             "impact": news["impact"],
             "date": datetime.now().strftime("%d %b %Y"),
             "source": "Analisi di Mercato",
-            "url": news.get("url",""),
+            "url": news.get("url", ""),
             "translation_quality": "Professional Italian",
             "category": news["category"]
         })
     
     return formatted_news
+
+def update_market_news():
+    """Aggiorna le notizie di mercato usando Finnhub con fallback"""
+    try:
+        # Prima prova con l'API Finnhub
+        finnhub_news = generate_mixed_news(8)
+        
+        if finnhub_news:
+            st.session_state.market_news = finnhub_news
+        else:
+            # Se non ci sono notizie dall'API, usa quelle demo
+            st.session_state.market_news = generate_professional_news(8)
+            st.warning("⚠️ Usando notizie demo - API Finnhub non disponibile")
+            
+    except Exception as e:
+        st.error(f"Errore nell'aggiornamento notizie: {e}")
+        st.session_state.market_news = generate_professional_news(8)
 
 def test_finnhub_connection():
     """Testa la connessione all'API Finnhub"""
@@ -189,6 +324,7 @@ def calculate_investment_score(df):
             row.get('MACD.signal', None) if 'MACD.signal' in row.index else row.get('signal', None)
         ), axis=1
     )
+    
     scored_df['Investment_Score'] += scored_df['MACD_Score'] * 0.15
     
     # 3. Trend Score (peso 25%) - prezzo vs SMA50 e SMA200
@@ -210,6 +346,7 @@ def calculate_investment_score(df):
     scored_df['Trend_Score'] = scored_df.apply(
         lambda row: trend_score(row['close'], row['SMA50'], row['SMA200']), axis=1
     )
+    
     scored_df['Investment_Score'] += scored_df['Trend_Score'] * 0.25
     
     # 4. Technical Rating Score (peso 20%)
@@ -286,10 +423,10 @@ def fetch_screener_data():
             query = (
                 Query()
                 .select('name', 'description', 'country', 'sector', 'currency', 'close', 'change', 'volume',
-                       'market_cap_basic', 'RSI', 'MACD.macd', 'MACD.signal', 'SMA50', 'SMA200',
-                       'Volatility.D', 'Recommend.All', 'float_shares_percent_current',
-                       'relative_volume_10d_calc', 'price_earnings_ttm', 'earnings_per_share_basic_ttm',
-                       'Perf.W', 'Perf.1M')
+                        'market_cap_basic', 'RSI', 'MACD.macd', 'MACD.signal', 'SMA50', 'SMA200',
+                        'Volatility.D', 'Recommend.All', 'float_shares_percent_current',
+                        'relative_volume_10d_calc', 'price_earnings_ttm', 'earnings_per_share_basic_ttm',
+                        'Perf.W', 'Perf.1M')
                 .where(
                     Column('type').isin(['stock']),
                     Column('market_cap_basic').between(1_000_000_000, 200_000_000_000_000),
@@ -307,6 +444,7 @@ def fetch_screener_data():
             )
             
             df = query[1]
+            
             if not df.empty:
                 df = calculate_investment_score(df)
                 df['Rating'] = df['Recommend.All'].apply(format_technical_rating)
@@ -329,6 +467,7 @@ def fetch_screener_data():
                 })
                 
                 return df
+                
     except Exception as e:
         st.error(f"❌ Errore nel recupero dati: {e}")
         return pd.DataFrame()
@@ -355,29 +494,31 @@ def get_top_5_investment_picks(df):
         return " | ".join(reasons[:3])
     
     top_5['Recommendation_Reason'] = top_5.apply(generate_recommendation_reason, axis=1)
+    
     return top_5
 
 # --- MAIN APP CON TAB SYSTEM ---
 st.title("📈 Financial Screener Dashboard")
-st.markdown("Analizza le migliori opportunità di investimento con criteri tecnici avanzati e notizie professionali italiane")
+st.markdown("Analizza le migliori opportunità di investimento con criteri tecnici avanzati e notizie reali da Finnhub")
 
-# Status semplificato
+# Status system
 with st.expander("🔑 Stato Sistema", expanded=False):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**🇮🇹 Notizie Professionali**")
-        st.success("✅ 15 template nativi italiani")
-        st.success("✅ Contenuti scritti da esperti finanziari")
-        st.success("✅ Linguaggio professionale garantito")
+        st.markdown("**🌐 API Finnhub**")
+        if test_finnhub_connection():
+            st.success("✅ Connessione attiva")
+            st.success("✅ Notizie reali disponibili")
+        else:
+            st.warning("⚠️ Connessione limitata")
+            st.info("📰 Fallback a notizie demo")
     
     with col2:
-        st.markdown("**📡 Connessioni**")
-        if test_finnhub_connection():
-            st.success("✅ Finnhub API attiva (per test)")
-        else:
-            st.warning("⚠️ Finnhub limitato")
-        st.info("📰 Sistema: Solo notizie native professionali")
+        st.markdown("**📡 Servizi**")
+        st.success("✅ TradingView Screener attivo")
+        st.success("✅ Sistema di scoring avanzato")
+        st.success("✅ Grafici TradingView integrati")
 
 st.markdown("---")
 
@@ -390,9 +531,16 @@ with col1:
         if not new_data.empty:
             st.session_state.data = new_data
             st.session_state.top_5_stocks = get_top_5_investment_picks(new_data)
-            st.session_state.market_news = generate_professional_news(8)
+            
+            # Usa la nuova funzione per le notizie reali
+            update_market_news()
+            
             st.session_state.last_update = datetime.now()
-            st.success(f"✅ Aggiornati {len(new_data)} titoli | 📰 {len(st.session_state.market_news)} notizie professionali italiane")
+            
+            news_count = len(st.session_state.market_news)
+            news_source = "Finnhub API" if any('finnhub' in str(news.get('source', '')).lower() for news in st.session_state.market_news) else "Demo"
+            
+            st.success(f"✅ Aggiornati {len(new_data)} titoli | 📰 {news_count} notizie da {news_source}")
         else:
             st.warning("⚠️ Nessun dato trovato")
 
@@ -527,12 +675,13 @@ with tab1:
         else:
             st.info("📈 Aggiorna i dati per vedere la performance settimanale dei settori.")
         
-        # Data table  
+        # Data table
         st.subheader("📋 Dati Dettagliati")
         st.markdown(f"**Visualizzati {len(filtered_df)} di {len(df)} titoli**")
         
         available_columns = ['Company', 'Symbol', 'Country', 'Sector', 'Currency', 'Price', 'Rating',
                            'Investment_Score', 'Recommend.All', 'RSI', 'Volume', 'TradingView_URL']
+        
         display_columns = st.multiselect(
             "Seleziona colonne da visualizzare:",
             available_columns,
@@ -582,8 +731,10 @@ with tab1:
                 return ''
             
             styled_df = display_df.style
+            
             if 'Score' in display_df.columns:
                 styled_df = styled_df.applymap(color_score, subset=['Score'])
+            
             if 'Rating' in display_df.columns:
                 styled_df = styled_df.applymap(color_rating, subset=['Rating'])
             
@@ -601,25 +752,29 @@ with tab1:
                 mime="text/csv",
                 use_container_width=True
             )
+    
     else:
         # Welcome message
         st.markdown("""
         ## 🚀 Benvenuto nel Financial Screener Professionale!
         
-        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie professionali di mercato**.
+        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie reali da Finnhub**.
         
         ### 🎯 Funzionalità Principali:
+        
         - **🔥 TOP 5 PICKS**: Selezione automatica titoli con maggiori probabilità di guadagno
-        - **📈 Link TradingView**: Accesso diretto ai grafici professionali  
+        - **📈 Link TradingView**: Accesso diretto ai grafici professionali
         - **🧮 Investment Score**: Punteggio 0-100 con analisi multi-fattoriale
         - **📊 Performance Settoriale**: Dashboard completa per settori
-        - **📰 Notizie di Mercato**: Analisi e aggiornamenti finanziari
+        - **📰 Notizie di Mercato**: Aggiornamenti reali da Finnhub API
         - **🔍 Ricerca TradingView**: Cerca e visualizza grafici di qualsiasi titolo
         
         ### 📊 Sistema di Scoring:
+        
         Il nostro algoritmo analizza:
+        
         - **RSI ottimale** (20%): Momentum positivo senza ipercomprato
-        - **MACD signal** (15%): Conferma del trend rialzista  
+        - **MACD signal** (15%): Conferma del trend rialzista
         - **Trend analysis** (25%): Prezzo vs medie mobili
         - **Technical rating** (20%): Raccomandazioni tecniche aggregate
         - **Volatilità controllata** (10%): Movimento sufficiente ma gestibile
@@ -665,15 +820,20 @@ with tab2:
                     )
                 
                 st.markdown("---")
+    
     else:
         st.info("📊 Aggiorna i dati per visualizzare i TOP 5 picks!")
 
 with tab3:
-    # SEZIONE NOTIZIE PROFESSIONALI ITALIANE (PULITA)
+    # SEZIONE NOTIZIE DA FINNHUB
     if st.session_state.market_news:
         st.subheader("📰 Notizie di Mercato")
         
-        # Display news (senza diciture extra)
+        # Mostra se le notizie sono da Finnhub o demo
+        news_source = "Finnhub API" if any('finnhub' in str(news.get('source', '')).lower() for news in st.session_state.market_news) else "Demo"
+        st.info(f"📡 Fonte: {news_source}")
+        
+        # Display news
         col1, col2 = st.columns(2)
         
         for i, news in enumerate(st.session_state.market_news):
@@ -683,96 +843,104 @@ with tab3:
                     st.markdown(f"*{news['date']} - {news['source']}*")
                     st.markdown(news['description'])
                     st.markdown(f"**Impatto:** {news['impact']}")
-                    st.markdown(f"**Fonte:** {news.get("url","")}")
-
+                    if news.get('url'):
+                        st.markdown(f"**[Leggi di più]({news['url']})**")
                     
-                    # Solo category badge (manteniamo)
+                    # Category badge
                     if news.get('category'):
                         category_names = {
                             "market_rally": "🚀 Rally di mercato",
-                            "earnings": "📊 Risultati aziendali", 
+                            "earnings": "📊 Risultati aziendali",
                             "fed_policy": "🏦 Politica monetaria",
                             "sector_performance": "💼 Performance settoriali",
                             "economic_data": "🌍 Dati macroeconomici",
-                            "global_markets": "🌐 Mercati globali",
-                            "volatility": "⚡ Volatilità"
+                            "general": "📈 Mercati generali",
+                            "company_specific": "🏢 Notizie aziendali"
                         }
+                        
                         category_display = category_names.get(news['category'], news['category'])
                         st.caption(f"🏷️ {category_display}")
                     
                     st.markdown("---")
         
-        # Summary pulito (senza conteggi traduzioni)
+        # Summary
         current_date = datetime.now()
         st.success(f"""
         🎯 **Notizie di Mercato Aggiornate** - {current_date.strftime('%d/%m/%Y %H:%M')}
-        ✅ Contenuti professionali di qualità | 🏷️ Categorizzazione per settore | 📊 Analisi di impatto sui mercati | 🔄 Aggiornamento automatico
+        ✅ Fonte: {news_source} | 🏷️ Categorizzazione automatica | 📊 Analisi di impatto | 🔄 Aggiornamento in tempo reale
         """)
+    
     else:
         st.info("📰 Aggiorna i dati per visualizzare le notizie di mercato!")
 
 with tab4:
-    # NUOVO TAB: TRADINGVIEW SEARCH
+    # TRADINGVIEW SEARCH
     st.header("🔍 Ricerca Titolo TradingView")
     
     symbol = st.text_input("Inserisci simbolo o nome titolo", "")
+    
     if symbol:
         url = f"https://www.tradingview.com/chart/?symbol={symbol.upper()}"
         st.markdown(f"[Apri grafico TradingView per {symbol}]({url})")
-        # OPPURE, per aprire direttamente la finestra browser:
+        
         if st.button("Apri grafico in nuova finestra"):
             webbrowser.open_new_tab(url)
 
 # --- SIDEBAR ---
 st.sidebar.title("ℹ️ Informazioni")
+
 st.sidebar.markdown("""
 ### 🎯 Funzionalità:
+
 - **🏆 TOP 5 PICKS**: Algoritmo di selezione AI
 - **🧮 Investment Score**: Sistema a 6 fattori
 - **📈 TradingView**: Integrazione diretta e ricerca
-- **📊 Analisi Settoriale**: Performance settimanale  
-- **📰 Notizie di Mercato**: Aggiornamenti finanziari
+- **📊 Analisi Settoriale**: Performance settimanale
+- **📰 Notizie Finnhub**: Aggiornamenti reali
 
 ### 📊 Investment Score:
+
 L'algoritmo valuta ogni azione su 6 parametri:
 
 1. **RSI Score**: Momentum ottimale
-2. **MACD Score**: Segnale di trend  
+2. **MACD Score**: Segnale di trend
 3. **Trend Score**: Analisi medie mobili
 4. **Technical Rating**: Raccomandazioni aggregate
 5. **Volatility Score**: Movimento controllato
 6. **Market Cap Score**: Dimensione ideale
 
 ### 🎯 Scala di Valutazione:
+
 - **90-100**: Opportunità eccellente
-- **80-89**: Molto interessante  
+- **80-89**: Molto interessante
 - **70-79**: Buona opportunità
 - **60-69**: Da valutare
 - **<60**: Attenzione richiesta
 
 ### 📈 Significato Rating:
+
 - **🟢 Strong Buy**: Molto positivo (≥0.5)
 - **🟢 Buy**: Positivo (≥0.1)
-- **🟡 Neutral**: Neutrale (-0.1 a 0.1)  
+- **🟡 Neutral**: Neutrale (-0.1 a 0.1)
 - **🔴 Sell**: Negativo (≤-0.1)
 - **🔴 Strong Sell**: Molto negativo (≤-0.5)
 
-### 📰 Categorie Notizie:
-- 📈 **Rally di mercato**: Movimenti positivi
-- 📊 **Risultati aziendali**: Earnings e guidance  
-- 🏦 **Politica monetaria**: Fed e banche centrali
-- 💼 **Performance settoriali**: Analisi per industria
-- 🌍 **Dati macro**: Indicatori economici
-- 🌐 **Mercati globali**: Panorama internazionale
-- ⚡ **Volatilità**: Risk assessment
+### 📰 Notizie API:
+
+- **🌐 Finnhub**: Notizie di mercato reali
+- **🏢 Company News**: Notizie specifiche per aziende
+- **📊 Categorizzazione**: Automatica per settore
+- **🔄 Fallback**: Sistema demo in caso di errori
 
 ### 🔍 Ricerca TradingView:
+
 - **Accesso diretto**: Link ai grafici professionali
-- **Tutti i mercati**: Azioni, forex, crypto, commodities  
+- **Tutti i mercati**: Azioni, forex, crypto, commodities
 - **Strumenti completi**: Analisi tecnica avanzata
 
 ### 🔄 Aggiornamenti:
-Sistema automatizzato con contenuti sempre aggiornati.
+
+Sistema automatizzato con dati reali da Finnhub API.
 """)
 
 st.sidebar.markdown("---")
