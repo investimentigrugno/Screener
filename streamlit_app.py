@@ -9,7 +9,7 @@ import webbrowser
 import numpy as np
 import requests
 import random
-import json
+from googletrans import Translator, LANGUAGES  # CAMBIATO: usa googletrans
 from typing import List, Dict
 import re
 
@@ -36,57 +36,51 @@ st.set_page_config(
 # --- API CONFIGURATION ---
 FINNHUB_API_KEY = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
-LIBRETRANSLATE_URL = "https://libretranslate.com"  # API LibreTranslate gratuita
 
-# --- FUNZIONI PER TRADUZIONE LIBRETRANSLATE ---
-def translate_text(text, source_lang="en", target_lang="it"):
-    """Traduce il testo usando LibreTranslate API"""
-    if not text or text.strip() == "":
+# Inizializza il traduttore Google
+try:
+    translator = Translator()
+except:
+    translator = None
+
+# --- FUNZIONI PER TRADUZIONE GOOGLETRANS ---
+def translate_text_google(text, source_lang="en", target_lang="it"):
+    """Traduce il testo usando Google Translate API"""
+    if not text or text.strip() == "" or not translator:
         return text
     
     try:
-        url = f"{LIBRETRANSLATE_URL}/translate"
+        # Traduce il testo
+        result = translator.translate(text, src=source_lang, dest=target_lang)
+        return result.text
         
-        data = {
-            "q": text,
-            "source": source_lang,
-            "target": target_lang,
-            "format": "text"
-        }
-        
-        response = requests.post(url, json=data, timeout=10)
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result.get("translatedText", text)
-        else:
-            return text  # Ritorna il testo originale se la traduzione fallisce
-            
     except Exception as e:
-        return text  # Ritorna il testo originale in caso di errore
+        return text  # Ritorna il testo originale se la traduzione fallisce
 
-def detect_language(text):
-    """Rileva la lingua del testo usando LibreTranslate"""
+def detect_language_google(text):
+    """Rileva la lingua del testo usando Google Translate"""
+    if not text or not translator:
+        return "en"
+    
     try:
-        url = f"{LIBRETRANSLATE_URL}/detect"
-        
-        data = {
-            "q": text
-        }
-        
-        response = requests.post(url, json=data, timeout=5)
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result and len(result) > 0:
-                return result[0].get("language", "en")
-        
-        return "en"  # Default to English
+        detected = translator.detect(text)
+        return detected.lang
         
     except Exception:
-        return "en"
+        return "en"  # Default to English
 
-# --- FUNZIONI PER LE NOTIZIE FINNHUB CON TRADUZIONE ---
+def test_google_translate():
+    """Testa la connessione all'API Google Translate"""
+    if not translator:
+        return False
+    
+    try:
+        test_result = translator.translate("Hello World", src='en', dest='it')
+        return test_result.text != "Hello World"
+    except:
+        return False
+
+# --- FUNZIONI PER LE NOTIZIE FINNHUB CON TRADUZIONE GOOGLE ---
 def fetch_finnhub_market_news(count=8):
     """Recupera notizie reali da Finnhub API e le traduce in italiano"""
     try:
@@ -109,19 +103,22 @@ def fetch_finnhub_market_news(count=8):
             title = news.get('headline', 'Titolo non disponibile')
             description = news.get('summary', 'Descrizione non disponibile')
             
-            # Traduce titolo e descrizione se sono in inglese
-            title_lang = detect_language(title)
-            desc_lang = detect_language(description)
+            # Rileva la lingua e traduce se necessario
+            title_lang = detect_language_google(title)
+            desc_lang = detect_language_google(description)
+            
+            translated_title = title
+            translated_description = description
             
             if title_lang == "en":
-                title = translate_text(title, "en", "it")
+                translated_title = translate_text_google(title, "en", "it")
             
             if desc_lang == "en":
-                description = translate_text(description, "en", "it")
+                translated_description = translate_text_google(description, "en", "it")
             
             formatted_news.append({
-                'title': title,
-                'description': description,
+                'title': translated_title,
+                'description': translated_description,
                 'impact': '📊 Impatto sui mercati',
                 'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
                 'source': news.get('source', 'Finnhub'),
@@ -162,19 +159,22 @@ def fetch_company_news_finnhub(symbol, days_back=7, limit=3):
             title = news.get('headline', 'Titolo non disponibile')
             description = news.get('summary', 'Descrizione non disponibile')
             
-            # Traduce se necessario
-            title_lang = detect_language(title)
-            desc_lang = detect_language(description)
+            # Rileva lingua e traduce se necessario
+            title_lang = detect_language_google(title)
+            desc_lang = detect_language_google(description)
+            
+            translated_title = title
+            translated_description = description
             
             if title_lang == "en":
-                title = translate_text(title, "en", "it")
+                translated_title = translate_text_google(title, "en", "it")
             
             if desc_lang == "en":
-                description = translate_text(description, "en", "it")
+                translated_description = translate_text_google(description, "en", "it")
             
             formatted_news.append({
-                'title': title,
-                'description': description,
+                'title': translated_title,
+                'description': translated_description,
                 'impact': f'📊 Impatto su {symbol}',
                 'date': datetime.fromtimestamp(news.get('datetime', 0)).strftime('%d %b %Y'),
                 'source': news.get('source', 'Finnhub'),
@@ -192,7 +192,7 @@ def fetch_company_news_finnhub(symbol, days_back=7, limit=3):
 def fetch_mixed_finnhub_news(count=8):
     """Recupera un mix di notizie generali e company-specific tradotte"""
     try:
-        with st.spinner("🌐 Recupero e traduco notizie da Finnhub..."):
+        with st.spinner("🌐 Recupero e traduco notizie con Google Translate..."):
             # Notizie generali
             general_news = fetch_finnhub_market_news(count//2)
             
@@ -211,14 +211,6 @@ def fetch_mixed_finnhub_news(count=8):
     except Exception as e:
         st.error(f"Errore nel recupero notizie: {e}")
         return []
-
-def test_translation_api():
-    """Testa la connessione all'API LibreTranslate"""
-    try:
-        test_text = translate_text("Hello World", "en", "it")
-        return test_text != "Hello World"
-    except:
-        return False
 
 def test_finnhub_connection():
     """Testa la connessione all'API Finnhub"""
@@ -512,8 +504,8 @@ with st.expander("🔑 Stato Sistema", expanded=False):
             st.warning("⚠️ API non disponibile")
     
     with col2:
-        st.markdown("**🌐 LibreTranslate API**")
-        if test_translation_api():
+        st.markdown("**🌐 Google Translate**")
+        if test_google_translate():
             st.success("✅ Traduzione attiva")
         else:
             st.warning("⚠️ Traduzione non disponibile")
@@ -527,7 +519,7 @@ with st.expander("🔑 Stato Sistema", expanded=False):
     with col2:
         st.markdown("**🇮🇹 Traduzione**")
         st.success("✅ Traduzione automatica EN→IT")
-        st.success("✅ Rilevamento lingua automatico")
+        st.success("✅ Rilevamento lingua Google")
 
 st.markdown("---")
 
@@ -767,7 +759,7 @@ with tab1:
         st.markdown("""
         ## 🚀 Benvenuto nel Financial Screener Professionale!
         
-        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie tradotte automaticamente** da Finnhub.
+        Questa app utilizza un **algoritmo di scoring intelligente** e **notizie tradotte con Google Translate**.
         
         ### 🎯 Funzionalità Principali:
         
@@ -775,14 +767,14 @@ with tab1:
         - **📈 Link TradingView**: Accesso diretto ai grafici professionali
         - **🧮 Investment Score**: Punteggio 0-100 con analisi multi-fattoriale
         - **📊 Performance Settoriale**: Dashboard completa per settori
-        - **📰 Notizie Tradotte**: Aggiornamenti reali da Finnhub API tradotti in italiano
+        - **📰 Notizie Tradotte**: Aggiornamenti reali da Finnhub API tradotti con Google Translate
         - **🔍 Ricerca TradingView**: Cerca e visualizza grafici di qualsiasi titolo
         
-        ### 🌐 Traduzione Automatica:
+        ### 🌐 Google Translate Integration:
         
         - **🇬🇧→🇮🇹 EN→IT**: Traduzione automatica delle notizie inglesi
-        - **🔍 Rilevamento lingua**: Identifica automaticamente la lingua originale
-        - **🌐 LibreTranslate API**: Servizio gratuito e open source
+        - **🔍 Rilevamento lingua**: Identificazione automatica della lingua originale
+        - **⚡ Veloce e accurato**: Usa la stessa tecnologia di translate.google.com
         
         **👆 Clicca su 'Aggiorna Dati' per iniziare l'analisi!**
         """)
@@ -829,9 +821,9 @@ with tab2:
         st.info("📊 Aggiorna i dati per visualizzare i TOP 5 picks!")
 
 with tab3:
-    # SEZIONE NOTIZIE FINNHUB TRADOTTE
+    # SEZIONE NOTIZIE FINNHUB TRADOTTE CON GOOGLE
     if st.session_state.market_news:
-        st.subheader("📰 Notizie di Mercato Tradotte")
+        st.subheader("📰 Notizie di Mercato Tradotte con Google Translate")
         
         # Statistiche traduzioni
         total_news = len(st.session_state.market_news)
@@ -845,7 +837,7 @@ with tab3:
         with col3:
             st.metric("🇮🇹 Originali IT", total_news - translated_news)
         
-        st.info(f"📡 {total_news} notizie da Finnhub | 🌐 {translated_news} tradotte automaticamente EN→IT")
+        st.info(f"📡 {total_news} notizie da Finnhub | 🌐 {translated_news} tradotte con Google Translate")
         
         # Display news
         col1, col2 = st.columns(2)
@@ -876,7 +868,7 @@ with tab3:
                     
                     # Indicatore traduzione
                     if news.get('translated', False):
-                        st.caption("🌐 Tradotto automaticamente da LibreTranslate")
+                        st.caption("🌐 Tradotto automaticamente con Google Translate")
                     
                     st.markdown("---")
         
@@ -884,19 +876,19 @@ with tab3:
         current_date = datetime.now()
         st.success(f"""
         🎯 **Notizie di Mercato Aggiornate** - {current_date.strftime('%d/%m/%Y %H:%M')}
-        ✅ Fonte: Finnhub API | 🌐 Traduzione: LibreTranslate | 🇮🇹 Contenuti in italiano
+        ✅ Fonte: Finnhub API | 🌐 Traduzione: Google Translate | 🇮🇹 Contenuti in italiano
         """)
     
     else:
         st.info("📰 Aggiorna i dati per visualizzare le notizie tradotte da Finnhub!")
         st.markdown("""
-        ### 🌐 Notizie Tradotte Automaticamente
+        ### 🌐 Notizie Tradotte con Google Translate
         
         Le notizie vengono recuperate dall'API Finnhub e tradotte automaticamente:
         
         - **📡 Fonte**: Finnhub API per notizie finanziarie reali
-        - **🔍 Rilevamento**: Identificazione automatica della lingua originale
-        - **🌐 Traduzione**: LibreTranslate API (gratuita e open source)
+        - **🔍 Rilevamento**: Identificazione automatica della lingua originale con Google
+        - **🌐 Traduzione**: Google Translate API (affidabile e veloce)
         - **🇬🇧→🇮🇹**: Traduzione automatica da inglese a italiano
         - **📈 Notizie generali**: Mercati globali e trend
         - **🏢 Company News**: Notizie specifiche per i tuoi TOP picks
@@ -928,13 +920,13 @@ st.sidebar.markdown("""
 - **🧮 Investment Score**: Sistema a 6 fattori
 - **📈 TradingView**: Integrazione diretta e ricerca
 - **📊 Analisi Settoriale**: Performance settimanale
-- **📰 Notizie Tradotte**: Finnhub + LibreTranslate
+- **📰 Notizie Tradotte**: Finnhub + Google Translate
 
-### 🌐 Sistema di Traduzione:
+### 🌐 Google Translate:
 
 - **Fonte Notizie**: Finnhub API (dati reali)
-- **Rilevamento Lingua**: Automatico
-- **Traduzione**: LibreTranslate API (gratuita)
+- **Rilevamento Lingua**: Google Detect API
+- **Traduzione**: Google Translate API (affidabile)
 - **🇬🇧→🇮🇹**: Inglese → Italiano
 - **Indicatori**: 🌐 = tradotto automaticamente
 
@@ -952,14 +944,14 @@ L'algoritmo valuta ogni azione su 6 parametri:
 ### 📰 Notizie:
 
 - **🌐 Solo dati reali**: Nessun contenuto demo
-- **🇮🇹 Traduzione automatica**: EN→IT
+- **🇮🇹 Google Translate**: Traduzione EN→IT
 - **📊 Categorizzazione**: Automatica per settore
 - **🔗 Fonti originali**: Link alle notizie complete
 
 ### 🔄 Aggiornamenti:
 
-Sistema completamente automatizzato con traduzione in tempo reale.
+Sistema completamente automatizzato con traduzione Google in tempo reale.
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Finnhub + LibreTranslate**")
+st.sidebar.markdown("**Sviluppato con ❤️ usando Streamlit + TradingView + Finnhub + Google Translate**")
