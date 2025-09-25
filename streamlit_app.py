@@ -79,7 +79,7 @@ def generate_professional_news(count=8):
             "impact": news["impact"],
             "date": datetime.now().strftime("%d %b %Y"),
             "source": "Analisi di Mercato",
-            "url": news.get("url","Fonte"),
+            "Fonte": news.get("url",""),
             "translation_quality": "Professional Italian",
             "category": news["category"]
         })
