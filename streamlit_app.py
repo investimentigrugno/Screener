@@ -80,7 +80,7 @@ def fetch_finnhub_general_news(category='general', limit=10):
     try:
         news_data = finnhub_client.general_news(category, min_id=0)
         
-        if not news_  # CORREZIONE: era "if not news_"
+        if not news_
             return []
             
         formatted_news = []
