@@ -683,7 +683,7 @@ with tab3:
                     st.markdown(f"*{news['date']} - {news['source']}*")
                     st.markdown(news['description'])
                     st.markdown(f"**Impatto:** {news['impact']}")
-                    st.markdown(f"[{Fonte}]({url})")
+                    st.markdown(f"**Fonte:** {news.get("url","")}")
 
                     
                     # Solo category badge (manteniamo)
