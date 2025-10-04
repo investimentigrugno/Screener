@@ -513,7 +513,7 @@ with st.expander("🔑 Stato Sistema", expanded=False):
     
     with col2:
         st.markdown("**🌐 Google Translate**")
-        if test_google_translate():
+        if test_deep_translate():
             st.success("✅ Traduzione attiva")
         else:
             st.warning("⚠️ Traduzione non disponibile")
