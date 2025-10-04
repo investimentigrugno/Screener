@@ -946,3 +946,4 @@ L'algoritmo valuta ogni azione su 6 parametri:
 - **🇮🇹 Google Translate**: Traduzione EN→IT
 - **📊 Categorizzazione**: Automatica per settore
 - **🔗 Fonti originali**: Link alle notizie complete
+""")
