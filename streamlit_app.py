@@ -9,7 +9,7 @@ import webbrowser
 import numpy as np
 import requests
 import random
-from googletrans import Translator, LANGUAGES  # CAMBIATO: usa googletrans
+from deep_translator import GoogleTranslator, single_detection  # SOLUZIONE: usa deep-translator
 from typing import List, Dict
 import re
 
@@ -37,47 +37,55 @@ st.set_page_config(
 FINNHUB_API_KEY = "d38fnb9r01qlbdj59nogd38fnb9r01qlbdj59np0"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-
-# --- SESSION STATE INITIALIZATION ---
-if 'data' not in st.session_state:
-    st.session_state.data = pd.DataFrame()
-
-if 'last_update' not in st.session_state:
-    st.session_state.last_update = None
-
-if 'top_5_stocks' not in st.session_state:
-    st.session_state.top_5_stocks = pd.DataFrame()
-
-if 'market_news' not in st.session_state:
-    st.session_state.market_news = []
-
-# --- PAGE CONFIG ---
-st.set_page_config(
-    page_title="Financial Screener",
-    page_icon="📈",
-    layout="wide"
-)
+# --- FUNZIONI PER LA TRADUZIONE CON DEEP-TRANSLATOR ---
 
 def detect_language_deep(text):
-    """Rileva la lingua del testo usando deep-translator"""
+    """Rileva la lingua del testo usando deep-translator (richiede API key gratuita)"""
     if not text:
         return "en"
 
     try:
-        # deep-translator ha una funzione per rilevare la lingua
-        detected_lang = single_detection(text, api_key=None)
-        return detected_lang
+        # Per ora usiamo una semplice euristica per la rilevazione
+        # Se contiene caratteri non ASCII, probabilmente non è inglese
+        if any(ord(char) > 127 for char in text):
+            return "auto"
 
+        # Parole chiave inglesi comuni nelle notizie finanziarie
+        english_keywords = ['stock', 'market', 'price', 'shares', 'trading', 'financial', 
+                          'earnings', 'revenue', 'profit', 'loss', 'company', 'business',
+                          'the', 'and', 'of', 'to', 'in', 'for', 'with', 'on', 'at']
+
+        text_lower = text.lower()
+        english_word_count = sum(1 for word in english_keywords if word in text_lower)
+
+        # Se trova molte parole inglesi, assume che sia inglese
+        if english_word_count >= 3:
+            return "en"
+        else:
+            return "auto"
     except Exception:
         return "en"  # Default to English
 
+def translate_text_deep(text, source_lang, target_lang):
+    """Traduce il testo usando deep-translator (GoogleTranslator)"""
+    if not text:
+        return text
+
+    try:
+        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translated = translator.translate(text)
+        return translated if translated else text
+    except Exception as e:
+        print(f"Errore traduzione: {e}")
+        return text  # Ritorna il testo originale se la traduzione fallisce
+
 def test_deep_translate():
-    """Testa la connessione all'API Google Translate con deep-translator"""
+    """Testa la connessione a deep-translator"""
     try:
         translator = GoogleTranslator(source='en', target='it')
         test_result = translator.translate("Hello World")
-        return test_result != "Hello World"
-    except:
+        return test_result and test_result != "Hello World"
+    except Exception:
         return False
 
 # --- FUNZIONI PER LE NOTIZIE FINNHUB CON TRADUZIONE DEEP-TRANSLATOR ---
@@ -188,13 +196,14 @@ def fetch_company_news_finnhub(symbol, days_back=7, limit=3):
 
     except Exception as e:
         return []
+
 def fetch_mixed_finnhub_news(count=8):
     """Recupera un mix di notizie generali e company-specific tradotte"""
     try:
-        with st.spinner("🌐 Recupero e traduco notizie con Google Translate..."):
+        with st.spinner("🌐 Recupero e traduco notizie con Deep-Translator..."):
             # Notizie generali
             general_news = fetch_finnhub_market_news(count//2)
-            
+
             # Notizie company se abbiamo TOP picks
             company_news = []
             if not st.session_state.top_5_stocks.empty:
@@ -202,11 +211,11 @@ def fetch_mixed_finnhub_news(count=8):
                 for symbol in top_symbols:
                     company_specific = fetch_company_news_finnhub(symbol, limit=1)
                     company_news.extend(company_specific)
-            
+
             # Combina
             all_news = general_news + company_news
             return all_news[:count]
-        
+
     except Exception as e:
         st.error(f"Errore nel recupero notizie: {e}")
         return []
@@ -219,7 +228,7 @@ def test_finnhub_connection():
             'symbol': 'AAPL',
             'token': FINNHUB_API_KEY
         }
-        
+
         response = requests.get(url, params=params, timeout=5)
         if response.status_code == 200:
             data = response.json()
